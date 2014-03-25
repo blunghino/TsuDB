@@ -74,7 +74,7 @@ def attributefilter(x, filtr, invert=False, nanzero=False):
     elif invert:
         return x[np.logical_not(filtr.astype(np.bool))]
         
-###############################################################################        
+###############################################################################
 def denan(*args, n_rounds=None, verbose=False):
     """
     find where any NaNs exist and remove those locations from all vectors
@@ -599,8 +599,7 @@ class Transect:
                 try:
                     nanargmx = nanargmax(self.sx[filtr])
                 except ValueError:
-                    nanargmx = 0
-                    raise
+                    nanargmx = np.nan
                 for ii in range(len(ind1)):
                     ## pointer to element ii on a transect in the sorted array
                     pointer = filtr.nonzero()[0][0] + ii
@@ -613,13 +612,13 @@ class Transect:
                     else:
                         ## calculate intermediate values for all other points
                         self.dx[pointer] = self.sx[pointer] - \
-                        self.sx[pointer-1]
-                        self.middx[pointer] = (self.sx[pointer] + \
-                        self.sx[pointer-1]) / 2
+                            self.sx[pointer-1]
+                        self.middx[pointer] = (self.sx[pointer] +
+                                               self.sx[pointer-1]) / 2
                         self.dds[pointer] = self.sds[pointer] - \
-                        self.sds[pointer-1]
+                            self.sds[pointer-1]
                         self.midds[pointer] = self.sds[pointer-1] + \
-                        self.dds[pointer] / 2                       
+                            self.dds[pointer] / 2
                     if ii == nanargmx:
                         ## this is where the maximum occurs
                         self.smxt[pointer] = self.sx[pointer]
@@ -825,7 +824,7 @@ def getevents(slocs, Adict):
         try:
             event.append(Adict['event_lookup'][t])
         except KeyError:
-            continue
+            event.append('')
     return event
     
 ###############################################################################
@@ -1263,10 +1262,11 @@ def flowdepth_thickness(Adict, save_fig=False,
         fig = plt.figure(figsize=(13, 9))
         ax = plt.subplot(111)
         for e in set(event):
-            p, = plt.plot(FLDint[event == e], THKint[event == e], emap[e], ms=12)
-            if e not in labs:
-                labs.append(e)
-                hands.append(p)
+            if e:
+                p, = plt.plot(FLDint[event == e], THKint[event == e], emap[e], ms=12)
+                if e not in labs:
+                    labs.append(e)
+                    hands.append(p)
         plt.plot(FLDint, line3_, 'k-', zorder=-1)
         plt.text(.98, .98, r'$\mathdefault{R^2 =}$ '+str(r2_), fontsize=14, 
                  transform=ax.transAxes, ha='right', va='top')
@@ -1479,6 +1479,7 @@ def meangs_flowdepth_thickness(Adict, save_fig=False, exclude=True,
     cbar.set_label(r'Mean Grain Size ($\mathsf{\phi}$)')
     if save_fig:
         figsaver(fig, save_fig, fig_title)    
+    print('******************************************************************')
     return fig
     
 ###############################################################################
@@ -2244,10 +2245,11 @@ def volume_flowdepth(Adict, save_fig=False, agu_print=True,
         plt.ylabel(r'Volume of Deposit (m$\mathdefault{^3}$ per m alongshore)', 
                    fontsize=18)
         for ii, e in enumerate(event):
-            p, = plt.plot(FmaxW[ii], V[ii], emap[e], ms=12, label=e)
-            if e not in labs:
-                labs.append(e)
-                hands.append(p)
+            if e:
+                p, = plt.plot(FmaxW[ii], V[ii], emap[e], ms=12, label=e)
+                if e not in labs:
+                    labs.append(e)
+                    hands.append(p)
         hands, labs = sort_legend_labels(hands, labs)
         plt.legend(hands, labs, frameon=False, numpoints=1, loc=2) 
     else:
@@ -2364,10 +2366,11 @@ def averagethickness_flowdepth(Adict, save_fig=False,
         emap = Adict['emap']
         hands, labs = [], []
         for ii, e in enumerate(event):
-            p, = plt.plot(fmx[ii], avT[ii], emap[e], label=e, ms=12)
-            if e not in labs:
-                labs.append(e)
-                hands.append(p)
+            if e:
+                p, = plt.plot(fmx[ii], avT[ii], emap[e], label=e, ms=12)
+                if e not in labs:
+                    labs.append(e)
+                    hands.append(p)
         hands, labs = sort_legend_labels(hands, labs)
         plt.legend(hands, labs, numpoints=1, frameon=False, loc=2)
     else:
@@ -3007,6 +3010,7 @@ def sublocation_plotter(Adict, *args, exclude=None):
             ax[3].invert_yaxis()
             plt.ylabel(r'Mean grain size ($\mathsf{\phi}$)', fontsize=12)
             plt.xlabel('Distance to Shore (m)', fontsize=18)
+            plt.xlim(left=THK.sds[filtr][0], right=THK.sds[filtr][-1])
     
     print('sublocation_plotter:')
     if exclude is True:
@@ -3122,7 +3126,12 @@ def plotall(menu, dic='Adict', kwargs='', show_figs=True, reverse=True):
     eg (to specify a value for save_fig for all plots) kwargs="save_fig='png'"
     """
     for key in sorted(menu.keys(), reverse=reverse):
-        exec('fig%i = menu[key](%s, %s)' % (key, dic, kwargs))
+        try:
+            exec('fig%i = menu[key](%s, %s)' % (key, dic, kwargs))
+        except Exception as e:
+            print('failed %s' % menu[key])
+            print(e)
+            print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
     if show_figs:
         print('Displaying figures...')
         plt.show()
@@ -3144,6 +3153,8 @@ def main():
     edit the Enter commands section to choose which plotting routines to run
     edit the Settings section to where to read data and whether to save
     """
+    global Adict
+    
     ##--Settings--##
     from_xls = True
     save_dict = False
@@ -3170,7 +3181,7 @@ def main():
         print('TsuDB data dictionary opened from "%s"\n' % dict_filename) 
 
     Adict['TDB_DIR'] = TDB_DIR
-
+    
     ##--Plotting routines menu--##
     menu = {
             1: distance_thickness_panels,
@@ -3196,12 +3207,12 @@ def main():
             
     ##--Enter commands--##
 #    plotall(menu, "save_fig='png'", show_figs=False)
-#    plotall({k: menu[k] for k in (7, 8, 9, 10, 11)})
 #    a = TsuDBGSFile('GS_Sumatra_KualaMerisi_trench19.csv')
 #    a = TsuDBGSFile('GS_Japan_Sendai_T3-10.csv')
-    sublocation_plotter(Adict, 'Amecosupe', 'La Quinta', 'Arop')
-#     menu[19](Adict)
-#     plt.show()
+#     sublocation_plotter(Adict, 'Kuala Merisi', 'Amecosupe', 'Arop')
+    menu[9](Adict, agu_print=True)
+    menu[7](Adict, agu_print=True)
+    plt.show()
 
 ############################################################################### 
 if __name__ == '__main__':

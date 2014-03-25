@@ -42,14 +42,14 @@ class TestDatecoder(unittest.TestCase):
         mixed_dates = ['', 38349., 40613., '2005-03-28', '1946-04-01?',  
                       '?', '2001-06-23', 35993.]
         out = tdb.datecoder(mixed_dates)
-        assert_array_almost_equal(out, self.correct_outputformat_1, decimal=3)
+        assert_array_almost_equal(out, self.correct_outputformat_1)
                       
     def test_datecoder_timestamp_output(self):
         """
         check that datecoder gives the correct timestamp output
         """
         out = tdb.datecoder(self.dates)
-        assert_array_almost_equal(out, self.correct_outputformat_1, decimal=3)
+        assert_array_almost_equal(out, self.correct_outputformat_1)
         
     def test_datecoder_datetime_output(self):
         """

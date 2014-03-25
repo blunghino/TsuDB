@@ -36,7 +36,7 @@ class TestGetevents(unittest.TestCase):
         """        
         out = tdb.getevents([1, 1, 1, 3, 2, 60], self.adict)
         self.assertEqual(out, ['Peru, 2001', 'Peru, 2001', 'Peru, 2001', 
-                               'Peru, 2001', 'Japan, 2011'])
+                               '', 'Peru, 2001', 'Japan, 2011'])
         
     def test_getevents_want_second_event_at_given_sublocation(self):
         """

@@ -35,10 +35,10 @@ class TestTransectClass(unittest.TestCase):
     correct_Tsort_return_flow_midds1 = ary([12.5, 37.5, np.nan, 50, 
                                                  np.nan])
     ## dataset 2
-    slc2 = ary([1, 1, 1, 2, 1, 1, 2, 2, 2, 2])
-    tsc2 = ary([1, 1, 1, 1, 2, 1, 2, 1, 2, 1])
-    dts2 = ary([-10, 20, 10, 3, 10, 25, 0, 3, 20, 2])
-    x2 = np.arange(10)
+    slc2 = ary([1, 1, 1, 2, 1, 1, 2, 2, 2, 2], dtype=float)
+    tsc2 = ary([1, 1, 1, 1, 2, 1, 2, 1, 2, 1], dtype=float)
+    dts2 = ary([-10, 20, 10, 3, 10, 25, 0, 3, 20, 2], dtype=float)
+    x2 = np.arange(10, dtype=float)
     correct_Tsort_ind2 = ary([0, 2, 1, 5, 4, 9, 3, 7, 6, 8])
     correct_mxw2 = ary([5, 5, 5, 9, 5, 5, 9, 9, 9, 9])
     correct_Tsort_sds2 = ary([-10, 10, 20, 25, 10, 2, 3, 3, 0, 20])
@@ -46,6 +46,12 @@ class TestTransectClass(unittest.TestCase):
     correct_Tsort_smxt2 = ary([np.nan, np.nan, np.nan, 5, 4, 9, 
                                     np.nan, np.nan, np.nan, 8])
     correct_Tsort_smx2 = ary([5, 5, 5, 5, 4, 9, 9, 9, 8, 8])
+
+    ## dataset 3
+    ## same as dataset 2 but with nan values in 'x'
+    x3 = np.arange(10, dtype=float)
+    x3[6:9] = np.nan
+    correct_Tsort_smx3 = ary([5, 5, 5, 5, 4, 9, 9, 9, np.nan, np.nan])
         
     def test_Tsort_with_dataset_1(self):
         """
@@ -79,6 +85,16 @@ class TestTransectClass(unittest.TestCase):
         assert_array_equal(t2.tnum, self.correct_Tsort_tnum2)
         assert_array_equal(t2.smxt, self.correct_Tsort_smxt2)
         assert_array_equal(t2.smx, self.correct_Tsort_smx2)
+
+    def test_Tsort_with_dataset_3(self):
+        """
+        test that _Tsort gives the expected results when NaNs are included in
+        the input data
+        """
+        t3 = tdb.Transect(self.x3, self.slc2, self.tsc2, self.dts2)
+        assert_array_equal(t3.ind, self.correct_Tsort_ind2)
+        assert_array_equal(t3.smx, self.correct_Tsort_smx3)
+        assert_array_equal(t3.tnum, self.correct_Tsort_tnum2)
         
     def test_Transect_with_no_dts(self):
         """
