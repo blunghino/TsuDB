@@ -1,4 +1,9 @@
 *.py[cod]
+*.pkl
+*.xls
+*.xlsx
+*.csv
+*.png
 
 # C extensions
 *.so
