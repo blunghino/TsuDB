@@ -16,10 +16,10 @@ import TsuDB as tdb
 
 class TestDatecoder(unittest.TestCase):
     
-    correct_outputformat_1 = np.asarray([np.nan, 1104220800, 
-                                              1299830400, 1111993200, 
+    correct_outputformat_1 = np.asarray([np.nan, 1104192000, 
+                                              1299801600, 1111968000., 
                                               np.nan, np.nan, 
-                                              993279600, 900658800])
+                                              993254400, 900633600])
     correct_outputformat_0 = np.asarray(
         [np.nan, 
          datetime.datetime(2004, 12, 28, 0, 0),

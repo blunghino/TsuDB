@@ -149,12 +149,12 @@ def datecoder(dates, dateformat=0, outputformat=1):
             try:
                 dates[ii] = dt.datetime.strptime(dates[ii], '%Y-%m-%d')
             ## bad excel date value
-            except ValueError:
+            except ValueError or TypeError:
                 dates[ii] = np.nan
         ## convert to timestamp 
         if outputformat:
             try:
-                dates[ii] = dates[ii].timestamp()
+                dates[ii] = dates[ii].replace(tzinfo=dt.timezone.utc).timestamp()
             except AttributeError:
                 continue
     return np.asarray(dates)
