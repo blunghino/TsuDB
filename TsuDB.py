@@ -204,13 +204,13 @@ def initialize_Adict():
     datum_lookup = {1: 'NAVD88', 2: 'MLLW', 3: 'MSL', 4: 'Tokyo Peil'}
     ## lookup dictionary to convert event dates to descriptive strings
     event_lookup = {
-                    993279600: 'Peru, 2001', 
-                    1299830400: 'Japan, 2011', 
-                    1104048000: 'Indian Ocean, 2004',
-                    1111993200: 'Sumatra, 2005',
-                    900658800: 'Papua New Guinea, 1998', 
-                    1267257600: 'Chile, 2010', 
-                    1254207600: 'Samoa, 2009',
+                    993254400: 'Peru, 2001', 
+                    1299801600: 'Japan, 2011', 
+                    1104019200: 'Indian Ocean, 2004',
+                    1111968000: 'Sumatra, 2005',
+                    900633600: 'Papua New Guinea, 1998', 
+                    1267228800: 'Chile, 2010', 
+                    1254182400: 'Samoa, 2009',
                     }
     ## use to map events to pyplot color symbol strings for plt.plot
     emap = {
@@ -3147,23 +3147,23 @@ class TsuDBGSFile(GSFile):
 ###############################################################################
 ##  MAIN PROGRAM
 ###############################################################################
-def main():
+def main(
+        xls_file_name='TsunamiSediments_AllData_BL_March2014_r6.xlsx', 
+        dict_filename = "TsuDB_Adict_2014-02-18.pkl",
+        from_xls=True,
+        save_dict=False,
+        saveas_dict=True,
+        TDB_DIR=None
+        ):
     """
-    run the core components of the program.
-    edit the Enter commands section to choose which plotting routines to run
-    edit the Settings section to where to read data and whether to save
+    load in Adict to make TsuDB data available for plotting routines
     """
     global Adict
     
-    ##--Settings--##
-    from_xls = True
-    save_dict = False
-    saveas_dict = True
-    
-    TDB_DIR = os.path.join(os.path.dirname(__file__), '..')
-    xls_file_path = os.path.join(TDB_DIR,
-                                 'TsunamiSediments_AllData_BL_March2014_r6.xlsx')
-    dict_filename = "TsuDB_Adict_2014-02-18.pkl"
+    ## Settings
+    if not TDB_DIR:
+        TDB_DIR = os.path.join(os.path.dirname(__file__), '..')
+    xls_file_path = os.path.join(TDB_DIR, xls_file_name)
 
     np.set_printoptions(threshold=np.nan)
     plt.close('all')
@@ -3181,7 +3181,11 @@ def main():
         print('TsuDB data dictionary opened from "%s"\n' % dict_filename) 
 
     Adict['TDB_DIR'] = TDB_DIR
-    
+
+############################################################################### 
+if __name__ == '__main__':
+    main()
+        
     ##--Plotting routines menu--##
     menu = {
             1: distance_thickness_panels,
@@ -3204,16 +3208,14 @@ def main():
             18: localslope_thickness,
             19: toposlope_depositslope,
             }
-            
     ##--Enter commands--##
 #    plotall(menu, "save_fig='png'", show_figs=False)
 #    a = TsuDBGSFile('GS_Sumatra_KualaMerisi_trench19.csv')
 #    a = TsuDBGSFile('GS_Japan_Sendai_T3-10.csv')
-#     sublocation_plotter(Adict, 'Kuala Merisi', 'Amecosupe', 'Arop')
-    menu[9](Adict, agu_print=True)
-    menu[7](Adict, agu_print=True)
-    plt.show()
-
-############################################################################### 
-if __name__ == '__main__':
-    main()
+#    sublocation_plotter(Adict, 'Kuala Merisi', 'Amecosupe', 'Arop')
+    import mpld3
+    from matplotlylib import fig_to_plotly
+    fig = flowdepth_thickness(Adict)
+    mpld3.fig_to_html(fig)
+    mpld3.show()
+    fig_to_plotly(fig, 'blunghino', '2ujyydbr9e')
