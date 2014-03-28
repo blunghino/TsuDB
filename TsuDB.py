@@ -31,14 +31,13 @@ import sys
 import csv
 import pickle
 import warnings
-import tkinter as tk
 import datetime as dt
 from tkinter import filedialog
 
 import xlrd
 import numpy as np
 import matplotlib as mpl
-from scipy.stats import linregress, nanmean
+from scipy.stats import linregress
 from scipy import nanmax, nanmin, nanargmax  
 from matplotlib import cm, pyplot as plt
 
@@ -468,7 +467,7 @@ def locationcharacteristics(Adict, file_name='', by_sublocation=False):
                 tempf, tempcode = denan(Adict[f], code, thk, verbose=False)[:2]
                 f = 'Deposit' + f
             for k in sorted(key.keys()):
-                if tempcode == None:
+                if tempcode is None:
                     temp = Adict[f][code == k]
                 else:
                     temp = tempf[tempcode == k]
@@ -1230,6 +1229,7 @@ def flowdepth_thickness(Adict, save_fig=False,
     """
     plot data from Adict- flow depth vs thickness
     dependent on global variable Adict containing TDB data keyed by attribute
+    :rtype : matplotlib.figure.Figure
     """
     print('Running plotting routine:', fig_title)
     out = denan(Adict["SLCode"], 
@@ -1561,7 +1561,7 @@ def percentIL_thickness(Adict, save_fig=False, inset_map=False,
     LON = out[7]
     x = 100 * THK.sds / INL.sx
     fig = plt.figure(figsize=(11, 8))
-    ax = plt.subplot(211)
+    plt.subplot(211)
     plt.scatter(x, THK.sx)
     plt.xlim([0,100])
     plt.ylim(ymin=0)
@@ -1673,7 +1673,7 @@ def distance_flowdepth_slope(Adict, save_fig=False, xmax=5000,
     plt.xlabel('Distance from shore (m)')
     plt.ylabel('Maximum flow depth (m)')
     plt.subplot(222)
-    p = plt.scatter(FLD.sds, FLD.sx, c=cm, s=s, cmap=cmap, vmin=mn, vmax=mx)
+    plt.scatter(FLD.sds, FLD.sx, c=cm, s=s, cmap=cmap, vmin=mn, vmax=mx)
     plt.xlim([0, xmax])
     plt.ylim(ymin=0)
     plt.title('Cumulative transect slope')
@@ -3158,8 +3158,6 @@ def main(
     """
     load in Adict to make TsuDB data available for plotting routines
     """
-    global Adict
-    
     ## Settings
     if not TDB_DIR:
         TDB_DIR = os.path.join(os.path.dirname(__file__), '..')
@@ -3182,9 +3180,11 @@ def main(
 
     Adict['TDB_DIR'] = TDB_DIR
 
+    return Adict
+
 ############################################################################### 
 if __name__ == '__main__':
-    main()
+    Adict = main()
         
     ##--Plotting routines menu--##
     menu = {
@@ -3213,9 +3213,4 @@ if __name__ == '__main__':
 #    a = TsuDBGSFile('GS_Sumatra_KualaMerisi_trench19.csv')
 #    a = TsuDBGSFile('GS_Japan_Sendai_T3-10.csv')
 #    sublocation_plotter(Adict, 'Kuala Merisi', 'Amecosupe', 'Arop')
-    import mpld3
-    from matplotlylib import fig_to_plotly
-    fig = flowdepth_thickness(Adict)
-    mpld3.fig_to_html(fig)
-    mpld3.show()
-    fig_to_plotly(fig, 'blunghino', '2ujyydbr9e')
+    plotall(menu)
