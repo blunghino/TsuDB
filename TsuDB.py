@@ -211,6 +211,15 @@ def initialize_Adict():
                     1267228800: 'Chile, 2010', 
                     1254182400: 'Samoa, 2009',
                     }
+    mw_lookup = {
+        993254400: 8.4,
+        1299801600: 9.,
+        1104019200: 9.1,
+        1111968000: 8.6,
+        900633600: 7.,
+        1267228800: 8.8,
+        1254182400: 8.1,
+    }
     ## use to map events to pyplot color symbol strings for plt.plot
     emap = {
             'Peru, 2001': 'kd', 
@@ -232,7 +241,7 @@ def initialize_Adict():
                            ('Lagundri Bay', 1), ('Pulut', 1), ('Tuangku', 2)]
     ## initialize master dictionary
     dic = {'floats': floats, 'event_lookup': event_lookup, 'emap': emap, 
-           'incomplete_transect': incomplete_transect, 
+           'incomplete_transect': incomplete_transect, 'mw_lookup': mw_lookup,
            'typegs_lookup': typegs_lookup, 'datum_lookup': datum_lookup}
     return dic
         
@@ -431,72 +440,6 @@ def opendict(filename):
         dic = pickle.load(picklein)
         picklein.close()    
     return dic
-    
-###############################################################################
-def locationcharacteristics(Adict, file_name='', by_sublocation=False):
-    """
-    calculate and write characteristics by location or by sublocation
-    fields include min, max, average, and N 
-    """
-    floats = ('Elevation', 'Layers', 'MaxLayers', 'Distance2shore',
-              'DepositStart', 'DepositLimit', 'InundationLimit', 'Runup', 
-              'FlowDepth',  'ProjectedFlowDepth', 'Thickness', 'MaxThickness', 
-              'MudIntLayers', 'Massive', 'Ngrading', 'Sgrading', 'Igrading')
-    binaries = ('MudCap', 'RipUps', 'HeavyMin', 'ShellFragments', 'WholeShell',
-                'CoarseClasts', 'OrganicDebris', 'Boulder')
-    if by_sublocation:
-        ## characteristics by sublocation
-        code, key = Adict['SLCode'], Adict['SLKey']    
-    else:
-        ## characteristics by location
-        code, key = SLcoder(Adict['Location'])
-    if not file_name:
-        ## save as box to specify a file name to write to
-        file_name = filedialog.asksaveasfilename()
-    with open(file_name, 'w') as file:
-        cw = csv.writer(file, dialect='excel', lineterminator='\n')
-        cw.writerow([''] + [v for _, v in sorted(key.items())])
-        ## for each attribute field (decimal)
-        for f in floats:
-            mn, mx, mean, N = [], [], [], []
-            tempcode = None
-            ## for each location or sublocation
-            if f in ('Elevation', 'Distance2shore'):
-                thk = Adict['Thickness'].copy()
-                thk[thk == 0] = np.nan
-                tempf, tempcode = denan(Adict[f], code, thk, verbose=False)[:2]
-                f = 'Deposit' + f
-            for k in sorted(key.keys()):
-                if tempcode is None:
-                    temp = Adict[f][code == k]
-                else:
-                    temp = tempf[tempcode == k]
-                if len(temp) == 0:
-                    temp = np.array([np.nan])
-                mn.append(nanmin(temp))
-                mx.append(nanmax(temp))
-                N.append(len(temp[notnan(temp)]))
-                if N[-1] > 0:
-                    mean.append(np.nansum(temp)/N[-1])
-                else:
-                    mean.append('nan')
-            cw.writerow([f])
-            cw.writerow(['Min'] + mn)
-            cw.writerow(['Max'] + mx)
-            cw.writerow(['Mean'] + mean)
-            cw.writerow(['N'] + N)
-            cw.writerow([''])
-        ## for each binary attribute field
-        for b in binaries:
-            N = []
-            ## for each location or sublocation
-            for k in sorted(key.keys()):
-                temp = Adict[b][code == k]
-                N.append(np.nansum(temp))
-            cw.writerow([b])    
-            cw.writerow(['N'] + N)
-            cw.writerow([''])
-    print('Location characteristics output written to %s' % file_name)
     
 ###############################################################################
 class Transect:
@@ -719,8 +662,104 @@ class Transect:
                     ## transect sorted apply filter f6
                     a = getattr(self, attr)
                     setattr(self, attr, a[f6])
-                    
-        
+
+###############################################################################
+def locationcharacteristics(Adict, file_name='', by_sublocation=False):
+    """
+    calculate and write characteristics by location or by sublocation
+    fields include min, max, average, and N
+    """
+    floats = ('Elevation', 'Layers', 'MaxLayers', 'Distance2shore',
+              'DepositStart', 'DepositLimit', 'InundationLimit', 'Runup',
+              'FlowDepth',  'ProjectedFlowDepth', 'Thickness', 'MaxThickness',
+              'MudIntLayers', 'Massive', 'Ngrading', 'Sgrading', 'Igrading')
+    binaries = ('MudCap', 'RipUps', 'HeavyMin', 'ShellFragments', 'WholeShell',
+                'CoarseClasts', 'OrganicDebris', 'Boulder')
+    if by_sublocation:
+        ## characteristics by sublocation
+        code, key = Adict['SLCode'], Adict['SLKey']
+    else:
+        ## characteristics by location
+        code, key = SLcoder(Adict['Location'])
+    if not file_name:
+        ## save as box to specify a file name to write to
+        file_name = filedialog.asksaveasfilename()
+    with open(file_name, 'w') as file:
+        cw = csv.writer(file, dialect='excel', lineterminator='\n')
+        cw.writerow([''] + [v for _, v in sorted(key.items())])
+        ## for each attribute field (decimal)
+        for f in floats:
+            mn, mx, mean, N = [], [], [], []
+            tempcode = None
+            ## for each location or sublocation
+            if f in ('Elevation', 'Distance2shore'):
+                thk = Adict['Thickness'].copy()
+                thk[thk == 0] = np.nan
+                tempf, tempcode = denan(Adict[f], code, thk, verbose=False)[:2]
+                f = 'Deposit' + f
+            for k in sorted(key.keys()):
+                if tempcode is None:
+                    temp = Adict[f][code == k]
+                else:
+                    temp = tempf[tempcode == k]
+                if len(temp) == 0:
+                    temp = np.array([np.nan])
+                mn.append(nanmin(temp))
+                mx.append(nanmax(temp))
+                N.append(len(temp[notnan(temp)]))
+                if N[-1] > 0:
+                    mean.append(np.nansum(temp)/N[-1])
+                else:
+                    mean.append('nan')
+            cw.writerow([f])
+            cw.writerow(['Min'] + mn)
+            cw.writerow(['Max'] + mx)
+            cw.writerow(['Mean'] + mean)
+            cw.writerow(['N'] + N)
+            cw.writerow([''])
+        ## for each binary attribute field
+        for b in binaries:
+            N = []
+            ## for each location or sublocation
+            for k in sorted(key.keys()):
+                temp = Adict[b][code == k]
+                N.append(np.nansum(temp))
+            cw.writerow([b])
+            cw.writerow(['N'] + N)
+            cw.writerow([''])
+    print('Location characteristics output written to %s' % file_name)
+
+###############################################################################
+def percent_normal_graded(uniformgsfile, tolerance=.1, min_size=None,
+                          csv_dir='', tsunami_only=True):
+    """
+    find the percent of sampling intervals that have normal grading
+
+    uniformgsfile is the name of a uniform format csv file with the path
+        configured in TsuDBGSFile
+
+    tolerance is the threshold difference of mean grain sizes (in phi)
+        required to consider an interval normal graded
+
+    min_size = None means all sizes are considered, a number sets the highest
+        phi value to be allowed
+
+    csv_dir specifies the directory where the uniformgsfile is located
+
+    tsunami_only specifies whether to consider only samples of a tsunami deposit
+
+    returns
+        ng: number of normal graded intervals
+        ng/len(diffs): proportion normal graded
+    """
+    gsf = TsuDBGSFile(uniformgsfile, project_directory=csv_dir)
+    means = gsf.dist_means(min_size=min_size)
+    if tsunami_only:
+        means = means[gsf.layer > 0]
+    diffs = means[:-1] - means[1:]
+    ng = len(diffs[diffs > tolerance])
+    return ng, ng/len(diffs)
+
 ###############################################################################
 ## Plotting routine subfunctions...
 ###############################################################################
@@ -730,12 +769,6 @@ def interp_flowdepth_to_thickness(THK, FLD, keep_nans=False):
     such that every thickness observation has a matching flow depth
     THK and FLD must be objects of the Transect class
     """
-    try:
-        THK.tnum
-        FLD.tnum
-    except AttributeError:
-        print('\n\n***THK and FLD must be objects of the Transect class***\n')
-        raise
     THKint = []
     FLDint = []
     DTSint = []
@@ -805,7 +838,7 @@ def SLdecoder(codein, key):
         return [key[code] for code in codein]
 
 ###############################################################################        
-def getevents(slocs, Adict):
+def getevents(slocs, Adict, return_mw=False):
     """   
     using Adict['event_lookup'] gets an event associated with sublocation codes
     returns a list of strings if passed a list or a numpy array...
@@ -817,13 +850,17 @@ def getevents(slocs, Adict):
     """
     SLCode = list(Adict['SLCode'])
     tsunami = list(Adict['Tsunami'])
-    event = []    
+    event = []
+    if return_mw:
+        lookup_key = 'mw_lookup'
+    else:
+        lookup_key = 'event_lookup'
     for s in slocs:
         t = tsunami[SLCode.index(s)]
         try:
-            event.append(Adict['event_lookup'][t])
+            event.append(Adict[lookup_key][t])
         except KeyError:
-            event.append('')
+            event.append('' if not return_mw else np.nan)
     return event
     
 ###############################################################################
@@ -2650,6 +2687,39 @@ def thickness_nextthickness_flowdepth(Adict, save_fig=False,
         figsaver(fig, save_fig, fig_title)
     print('******************************************************************')
     return fig
+
+###############################################################################
+def mw_thickness(Adict, save_fig=False, fig_title='Mw vs Thickness',
+                 annotate=False):
+    """
+    plot Mw vs thickness
+    """
+    print('Running plotting routine: '+fig_title)
+    out = denan((Adict['Thickness']+Adict['MaxThickness'])/2,
+                     Adict['SLCode'], Adict["Modern"])
+    thk, slc, _ = runfilters(out, 1)
+    mw = np.asarray(getevents(slc, Adict, return_mw=True))
+    thk, mw = denan(thk, mw)
+    m, b, r = linregress(mw, thk)[:3]
+    r2 = round(r**2, 2)
+    fig = plt.figure()
+    ax = plt.subplot(111)
+    plt.scatter(mw, thk)
+    plt.ylim(bottom=0)
+    plt.text(.02, .98, r'$\mathdefault{R^2 =}$ ' +str(r2), fontsize=14,
+                 transform=ax.transAxes, ha='left', va='top')
+    plt.plot(mw, mw*m+b, 'k')
+    plt.xlabel('Mw')
+    plt.ylabel('Deposit Thickness (cm)')
+    if annotate:
+        for m in set(mw):
+            t = thk[mw == m]
+            plt.annotate('n = %i' % len(t), (m, t.max()), xytext=(-30,20),
+                         textcoords='offset points')
+    if save_fig:
+        figsaver(fig, save_fig, fig_title)
+    print('******************************************************************')
+    return fig
     
 ###############################################################################
 def flowdepth_nextflowdepth(Adict, save_fig=False, 
@@ -2659,12 +2729,13 @@ def flowdepth_nextflowdepth(Adict, save_fig=False,
     dependent on global variable Adict containing TDB data keyed by attribute
     """
     print('Running plotting routine: '+fig_title)
-    out = denan(Adict['SLCode'],
-                Adict['Transect'],
-                Adict['Distance2shore'],
-                Adict['ProjectedFlowDepth'],
-                Adict['Modern']
-                )
+    out = denan(
+        Adict['SLCode'],
+        Adict['Transect'],
+        Adict['Distance2shore'],
+        Adict['ProjectedFlowDepth'],
+        Adict['Modern']
+    )
     out = runfilters(out, 1)
     FLD = Transect(out[3], out[0], out[1], out[2])
     mx = np.ceil(nanmax(FLD.smxt)/10) * 10.
@@ -3210,7 +3281,9 @@ if __name__ == '__main__':
             }
     ##--Enter commands--##
 #    plotall(menu, "save_fig='png'", show_figs=False)
-#    a = TsuDBGSFile('GS_Sumatra_KualaMerisi_trench19.csv')
-#    a = TsuDBGSFile('GS_Japan_Sendai_T3-10.csv')
+#     a = TsuDBGSFile('GS_Sumatra_Jantang3_T13.csv')
 #    sublocation_plotter(Adict, 'Kuala Merisi', 'Amecosupe', 'Arop')
-    plotall(menu)
+    out = denan(Adict['Thickness'], Adict['MaxThickness'])
+    print(len(out[0]), len(out[1]))
+    mw_thickness(Adict)
+    plt.show()
