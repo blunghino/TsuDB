@@ -874,7 +874,33 @@ def get_B_from_A(A, Adict, keyA='ID', keyB='GSFileUniform'):
     
     NOT necessary when using numpy arrays!
     """
-    return [Adict[keyB][Adict[keyA].index(a)] for a in A]
+    out = list(range(len(A)))
+    to_search = list(Adict[keyA])
+    to_retreive = list(Adict[keyB])
+    for ii, a in enumerate(A):
+        try:
+            ind = to_search.index(a)
+            out[ii] = to_retreive.pop(ind)
+            to_search.pop(ind)
+        except ValueError:
+            out[ii] = ''
+    return out
+    
+###############################################################################
+def get_datestrings(timestamps):
+    """
+    return a numpy array of date strings converted from timestamps
+    """
+    out = np.empty(timestamps.shape, dtype='<U10')
+    for ii, date in enumerate(timestamps):
+        try:
+            out[ii] = dt.datetime.fromtimestamp(date).strftime('%Y-%m-%d')
+        ## nan encountered
+        except OSError:
+            out[ii] = 'nan'
+        except TypeError:
+            out[ii] = 'nan'
+    return out
     
 ###############################################################################
 def get_values_on_transect_with_tuple(transect_tuple, Adict, *keys):

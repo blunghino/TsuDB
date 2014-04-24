@@ -16,10 +16,13 @@ import TsuDB as tdb
 class TestGetBFromA(unittest.TestCase):
     
     keyA = list(range(6))
-    A = [1, 3, 4]
+    A = [0, 4, 5, 3]
     keyB = ['a', 'b', 'c', 'd', 'e', 'f']
-    B = ['b', 'd', 'e']
-    Adict = {'keyA': keyA, 'keyB': keyB}
+    B = ['a', 'e', 'f', 'd']
+    keyC = [1, 1, 2, 3, 4, 4]
+    C = [1, 4, 4, 3]
+
+    Adict = {'keyC': keyC, 'keyA': keyA, 'keyB': keyB}
     
     def test_getBfromA_with_lists(self):
         """
@@ -48,6 +51,14 @@ class TestGetBFromA(unittest.TestCase):
         self.assertEqual(out1, self.B)
         self.assertEqual(out2, self.A)
         
-
+    def test_getBfromA_with_repeat_values(self):
+        """
+        test that repeat values are handled (assume sorted for repeats)
+        """
+        out1 = tdb.get_B_from_A(self.C, self.Adict, keyA='keyC', keyB='keyB')
+        out2 = tdb.get_B_from_A(self.B, self.Adict, keyA='keyB', keyB='keyC')
+        self.assertEqual(out1, self.B)
+        self.assertEqual(out2, self.C)
+        
 if __name__ == "__main__":
     unittest.main()
