@@ -35,7 +35,8 @@ class TestCsv2dic(unittest.TestCase):
         'Boulder',	'Aaxis', 'Baxis', 'Caxis', 'BoulderOrientation',
         'Sediment',	'Underlying', 'Surface', 'Topography',	'Notes',
         'floats', 'event_lookup', 'emap', 'incomplete_transect', 
-        'datum_lookup', 'attributes', 'SLCode', 'SLKey', 'typegs_lookup'
+        'datum_lookup', 'attributes', 'SLCode', 'SLKey', 'typegs_lookup', 
+        'mw_lookup',
     }
     correct_transect = np.asarray([1, 1, 1, np.nan, 1, 2])
     correct_underlying = ['soil', 'tan sand with roots', '', '', '', '']

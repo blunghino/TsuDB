@@ -24,10 +24,10 @@ class TestGSFileClass(unittest.TestCase):
     a_bins_phi_mid_3 = -0.375
     a_typegs = 'STLD'
     b_csv_file_name = 'GS_Sumatra_Lhokkruet2_T1.csv'
-    b_dist_means = ary([1.275675, 1.80715, 1.666925])
-    b_dist_stds = ary([0.887167727, 0.883166074, 1.012755422])
-    b_dist_moments_2 = ary([-0.591407243, -0.92246897, -1.372314436])
-    b_bin_units = 'phi mid'
+    b_dist_means = ary([1.666925, 1.80715, 1.275675])
+    b_dist_stds = ary([1.012755422, 0.883166074, 0.887167727])
+    b_dist_moments_2 = ary([-1.372314436, -0.92246897, -0.591407243])
+    b_sample_id = ary(['T1-(10-15)', 'T1-(5-10)', 'T1-(0-5)'])
     c_csv_file_name = 'GS_Japan_Sendai_T3-10.csv'
     c_dist_moments_3 = ary([22.694552, 51.320702, 32.55427, 53.349303, 
                                 63.232381, 68.214429, 50.28316, 2.352845])
@@ -166,8 +166,8 @@ class TestGSFileClass(unittest.TestCase):
     c_id = 'Sendai, T3-10'
     c_get_depth_bin_edges = ary([0, 1, 2, 3, 4, 5, 6, 7.25, 8.5])
     d_csv_file_name = 'GS_Japan_Sendai_T3-77.csv'
-    d_mid_depth = ary([np.nan, 5.5])
-    d_min_depth = ary([np.nan, 5])
+    d_mid_depth = ary([5.5, np.nan])
+    d_min_depth = ary([5, np.nan])
     
     a = TsuDBGSFile(a_csv_file_name)
     b = TsuDBGSFile(b_csv_file_name)
@@ -179,10 +179,10 @@ class TestGSFileClass(unittest.TestCase):
         test that init reads various csv field correctly
         """
         self.assertEqual(self.a.typegs, self.a_typegs)
-        self.assertEqual(self.b.bin_units, self.b_bin_units)
+        assert_array_equal(self.b.sample_id, self.b_sample_id)
         self.assertEqual(self.a.bins_phi[1], self.a_bins_phi_1)
         self.assertEqual(self.a.bins_phi_mid[3], self.a_bins_phi_mid_3)
-        self.assertIsInstance(self.a.trench_name, list)
+        self.assertIsInstance(self.a.trench_name, np.ndarray)
         self.assertEqual(self.c.id, self.c_id)
         self.assertIsInstance(self.a.mid_depth, np.ndarray)
         

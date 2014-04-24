@@ -848,25 +848,26 @@ def getevents(slocs, Adict, return_mw=False):
     note that sublocation code does not code to a unique event in cases where
     multiple events have been studied at the same sub location!!!!
     """
-    SLCode = list(Adict['SLCode'])
-    tsunami = list(Adict['Tsunami'])
+    SLCode = Adict['SLCode']
+    tsunami = Adict['Tsunami']
     event = []
     if return_mw:
         lookup_key = 'mw_lookup'
     else:
         lookup_key = 'event_lookup'
     for s in slocs:
-        t = tsunami[SLCode.index(s)]
+        t = tsunami[SLCode == s].min()
         try:
             event.append(Adict[lookup_key][t])
         except KeyError:
             event.append('' if not return_mw else np.nan)
+
     return event
     
 ###############################################################################
 def get_B_from_A(A, Adict, keyA='ID', keyB='GSFileUniform'):
     """
-    accepts list A of Adict[keyA] values
+    accepts list A of UNIQUE Adict[keyA] values
     returns a list of the associated Adict[keyB] values
     
     default keyA and keyB will retreive gsfileuniform from associated ids
@@ -3240,8 +3241,7 @@ def main(
     ## Main program to load database
     if from_xls:
         Adict = xls2dic(xls_file_path)
-        print('TsuDB data read in from xls file "%s"\n' \
-              % os.path.split(xls_file_path)[1])
+        print('TsuDB data read in from xls file "%s"\n' % xls_file_name)
     if save_dict and from_xls:
         dict_filename = savedict(Adict, askfilename=saveas_dict)
         print('TsuDB data dictionary saved as "%s"\n' % dict_filename)
@@ -3283,7 +3283,3 @@ if __name__ == '__main__':
 #    plotall(menu, "save_fig='png'", show_figs=False)
 #     a = TsuDBGSFile('GS_Sumatra_Jantang3_T13.csv')
 #    sublocation_plotter(Adict, 'Kuala Merisi', 'Amecosupe', 'Arop')
-    out = denan(Adict['Thickness'], Adict['MaxThickness'])
-    print(len(out[0]), len(out[1]))
-    mw_thickness(Adict)
-    plt.show()

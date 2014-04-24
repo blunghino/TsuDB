@@ -47,7 +47,7 @@ class TestGetevents(unittest.TestCase):
         out = tdb.getevents(np.ones(100), self.adict)
         self.assertRaises(ValueError, out.index, 'Japan, 2011')
         
-        
+            
 
 if __name__ == "__main__":
     unittest.main()
