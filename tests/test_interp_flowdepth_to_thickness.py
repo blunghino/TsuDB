@@ -19,15 +19,15 @@ import TsuDB as tdb
 
 class TestInterpFlowdepthToThickness(unittest.TestCase):
     
-    slc1 = ary([1, 1, 1, 1, 1], dtype=np.float64)
-    tsc1 = ary([1, 1, 1, 1, 1], dtype=np.float64)
-    dts1 = ary([0, 25, 50, 100, 75], dtype=np.float64)
-    t = ary([1, 2, 1, np.nan, 3])
-    f = ary([20, np.nan, 10, 30, np.nan])
+    slc1 = ary([1, 1, 1, 1, 1, 1], dtype=np.float64)
+    tsc1 = ary([1, 1, 1, 1, 1, 1], dtype=np.float64)
+    dts1 = ary([0, 25, 50, 100, 75, 125], dtype=np.float64)
+    t = ary([1, 2, 1, np.nan, 3, 5])
+    f = ary([20, np.nan, 10, 30, np.nan, np.nan])
     tint = ary([1, 2, 1, 3.])
     fint = ary([20, 15, 10, 20.])
     dtsint = ary([0, 25, 50, 75.])
-    tnumint = slc1[:-1]
+    tnumint = ary([1, 1, 1, 1])
 
     def test_interp_flowdepth_to_thickness(self):
         """

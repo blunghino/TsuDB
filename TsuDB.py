@@ -18,7 +18,7 @@ to test all functionality:
     at the command prompt in the py directory under the main project directory
     $ python -m unittest discover -v
     
-use requirements.txt to install all non-local requirements with pip:
+use requirements.txt to install all third party requirements with pip:
     pip install -r requirements.txt
 also requires GS_tools module to be added to PYTHONPATH
 Module available at https://github.com/blunghino/GS_tools
@@ -187,7 +187,7 @@ def initialize_Adict():
               'Lat', 'Long', 'Elevation', 'ShorelineOrientation', 'Layers',
               'TransectOrientation', 'Distance2transect', 'Distance2shore',
               'DepositStart', 'DepositLimit', 'InundationLimit', 'Runup', 
-              'FlowDepth', 'HeightAtShore', 'FlowDirection', 'Method', 
+              'FlowDepth', 'HeightAtShore', 'FlowDirection', 'Method',
               'MaxFlowDirection', 'Thickness', 'MaxThickness', 'Modern',
               'Aaxis', 'Baxis', 'Caxis', 'BoulderOrientation', 'TypeGS',
               'MaxLayers', 'MudCap', 'MudIntLayers', 'Ngrading', 'Sgrading', 
@@ -958,7 +958,7 @@ def lookup_SLCode(string, slKey):
         raise
 
 ###############################################################################
-def lookup_tnum(slcode, Trnsct):
+def lookup_tnum(slcode, Trnsct, negative_slcodes_where_no_transect=True):
     """
     generator for iterating through all transects at sublocation slcode
     """
@@ -966,7 +966,12 @@ def lookup_tnum(slcode, Trnsct):
         tnums = Trnsct.tnum[Trnsct.sw == slcode]
     except AttributeError or IndexError:
         raise
-    tnums = set(tnums)
+    if tnums.size == 0 and negative_slcodes_where_no_transect:
+        ## if no transect exists, we can instead yield -1 * slcode to indicate
+        ## to the call to lookup_tnum that no transect data exists here
+        tnums = {-slcode}
+    else:
+        tnums = set(tnums)
     for tnum in tnums:
         yield tnum
         
@@ -3046,6 +3051,14 @@ def sublocation_plotter(Adict, *args, exclude=None):
         tnums is a generator of transect numbers
         """
         for tnum in tnums:
+            if tnum < 0:
+                ## if tnums generator returns a negative value it is actually
+                ## returning an SLCode at a sublocation where not enough data
+                ## exists to create a transect. it does this as a courtesy to
+                ## allow sublocation_plotter to report 'No data to plot'
+                fig_title = SLdecoder(-tnum, Adict['SLKey'])
+                print('** %s. No data to plot. No transect data.' % fig_title)
+                continue
             filtr = THK.tnum == tnum
             ## get the sublocation code
             sloc = THK.sw[filtr][0]
@@ -3308,4 +3321,7 @@ if __name__ == '__main__':
     ##--Enter commands--##
 #    plotall(menu, "save_fig='png'", show_figs=False)
 #     a = TsuDBGSFile('GS_Sumatra_Jantang3_T13.csv')
-#    sublocation_plotter(Adict, 'Kuala Merisi', 'Amecosupe', 'Arop')
+#    menu[7](Adict, agu_print=False)
+#    plt.show()
+    sublocation_plotter(Adict,'Masefau')
+    
