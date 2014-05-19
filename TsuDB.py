@@ -3320,8 +3320,6 @@ if __name__ == '__main__':
             }
     ##--Enter commands--##
 #    plotall(menu, "save_fig='png'", show_figs=False)
-#     a = TsuDBGSFile('GS_Sumatra_Jantang3_T13.csv')
+#    a = TsuDBGSFile('GS_Sumatra_Jantang3_T13.csv')
 #    menu[7](Adict, agu_print=False)
-#    plt.show()
-    sublocation_plotter(Adict,'Masefau')
-    
+    sublocation_plotter(Adict) # Kulmunai Kuddi
