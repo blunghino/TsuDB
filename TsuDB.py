@@ -933,6 +933,10 @@ def get_values_on_transect_with_tuple(transect_tuple, Adict, *keys):
 def get_gsmeans(Adict, gs_min_max=None):
     """
     reads in ALL GSFiles and returns an array of bulk means for each trench
+    
+    gs_min_max is a sequence of length 2 specifying the minimum and maximum
+    grain size to be used in the calculations (grain size in phi)
+    eg gs_min_max=(4,-1) to specify only sand grains
     """
     gsmeans = np.ones_like(Adict["Thickness"]) * np.nan
     for ii, gs in enumerate(Adict['GSFileUniform']):
@@ -1484,6 +1488,48 @@ def maxthickness_maxflowdepth(Adict, save_fig=False, agu_print=False,
     print('******************************************************************')
     return fig
     
+###############################################################################
+def meangs_thickness(Adict, save_fig=False, exclude=True, sand_only=False,
+                     fig_title='Mean grain size vs Thickness'):
+    """
+    plot data from Adict - mean grain size vs thickness
+    """
+    print('Running plotting routine:', fig_title)
+    if exclude is True:
+        exclude = Adict['incomplete_transect']
+    if sand_only:
+        # specify min and max grain size to use in gs mean calculation
+        gs_min_max = (4, -1)
+    else:
+        gs_min_max = None
+    gsmeans = get_gsmeans(Adict, gs_min_max=gs_min_max)
+    out = denan(Adict["SLCode"], 
+                Adict["Transect"], 
+                Adict["Distance2shore"], 
+                Adict["Thickness"], 
+                Adict["MaxThickness"], 
+                gsmeans,
+                Adict["Modern"], 
+                n_rounds=3
+                )
+    out = runfilters(out, 1)
+    SLC = out[0]
+    TSC = out[1]
+    DTS = out[2]
+    THK = Transect((out[3]+out[4])/2., SLC, TSC, DTS, exclude=exclude, 
+                    slKey=Adict["SLKey"])
+    MGS = Transect(out[5], SLC, TSC, DTS, exclude=exclude, 
+                   slKey=Adict["SLKey"])
+    fig = plt.figure(figsize=(12, 12))
+    plt.scatter(MGS.sx, THK.sx)
+    plt.ylim(bottom=0)
+    plt.ylabel('Thickness (cm)')
+    plt.xlabel(r'Mean Grain Size ($\mathsf{\phi}$)')
+    plt.title(fig_title)
+    if save_fig:
+        figsaver(fig, save_fig, fig_title)    
+    print('******************************************************************')
+    return fig
     
 ###############################################################################
 def meangs_flowdepth_thickness(Adict, save_fig=False, exclude=True, 
@@ -1495,7 +1541,12 @@ def meangs_flowdepth_thickness(Adict, save_fig=False, exclude=True,
     print('Running plotting routine:', fig_title)
     if exclude is True:
         exclude = Adict['incomplete_transect']
-    gsmeans = get_gsmeans(Adict)
+    if sand_only:
+        # specify min and max grain size to use in gs mean calculation
+        gs_min_max = (4, -1)
+    else:
+        gs_min_max = None
+    gsmeans = get_gsmeans(Adict, gs_min_max=gs_min_max)
     out = denan(Adict["SLCode"], 
                 Adict["Transect"], 
                 Adict["Distance2shore"], 
@@ -1517,21 +1568,10 @@ def meangs_flowdepth_thickness(Adict, save_fig=False, exclude=True,
     MGS = Transect(out[6], SLC, TSC, DTS, exclude=exclude, 
                    slKey=Adict["SLKey"])
     fig = plt.figure(figsize=(12, 12))
-    if sand_only:
-        vmax = min(nanmax(MGS.sx), 4)
-        vmin = max(nanmin(MGS.sx), 0)
-        if vmin == 0 and vmax == 4:
-            extend = 'both'
-        elif vmin == 0:
-            extend = 'min'
-        elif vmax == 4:
-            extend = 'max'
-        else:
-            extend = 'neither'
-    else:
-        vmin = nanmin(MGS.sx)
-        vmax = nanmax(MGS.sx)
-        extend = 'neither'
+    # colorbar settings
+    vmin = nanmin(MGS.sx)
+    vmax = nanmax(MGS.sx)
+    extend = 'neither'
     if interpolate_flowdepth:
         thk, fld = interp_flowdepth_to_thickness(THK, FLD, keep_nans=True)[:2]
     else:
@@ -1603,7 +1643,7 @@ def slope_flowdepth_thickness(Adict, save_fig=False,
   
 ###############################################################################
 def percentIL_thickness(Adict, save_fig=False, inset_map=False, 
-                          fig_title=\
+                        normalize_thickness=False, fig_title=\
              'Distance to shore as percent of inundation limit vs thickness'):
     """
     plot data from Adict- percent of inundation limit vs thickness
@@ -1629,20 +1669,32 @@ def percentIL_thickness(Adict, save_fig=False, inset_map=False,
     LAT = out[6]
     LON = out[7]
     x = 100 * THK.sds / INL.sx
+    if normalize_thickness:
+        thk_norm = THK.sx / THK.smx
+        nplots = 3
+    else:
+        nplots = 2
     fig = plt.figure(figsize=(11, 8))
-    plt.subplot(211)
+    plt.subplot(nplots, 1, 1)
     plt.scatter(x, THK.sx)
     plt.xlim([0,100])
     plt.ylim(ymin=0)
     plt.title(fig_title)
     plt.ylabel('Deposit Thickness (cm)')
     plt.xlabel('Distance from shore (% of inundation limit)')
-    plt.subplot(212)
+    plt.subplot(nplots, 1, 2)
     plt.scatter(x, THK.smxt)
     plt.xlim([0,100])
     plt.ylim(ymin=0)
     plt.xlabel('Distance from shore (% of inundation limit)')
-    plt.ylabel('Maximum Thickness (cm)')
+    plt.ylabel('Maximum Deposit Thickness (cm)')
+    if normalize_thickness:
+        plt.subplot(nplots, 1, 3)
+        plt.scatter(x, thk_norm)
+        plt.xlim([0,100])
+        plt.ylim([0,1])
+        plt.xlabel('Distance from shore (% of inundation limit)')
+        plt.ylabel('Deposit Thickness (fraction of maximum transect thickness)')
     if inset_map:
         fig = insetmap(fig, LAT, LON, full_globe=True)    
     if save_fig:
@@ -2002,7 +2054,8 @@ def distance_changeinthickness_panels(Adict, save_fig=False,
     return fig
     
 ###############################################################################
-def percenttransect_thickness(Adict, save_fig=False, fig_title=\
+def percenttransect_thickness(Adict, save_fig=False, normalize_thickness=False, 
+                              fig_title=\
                                  'Thickness vs Distance along transect'):
     """
     plot data from Adict- percent of total transect vs thickness
@@ -2018,14 +2071,21 @@ def percenttransect_thickness(Adict, save_fig=False, fig_title=\
                 )
     out = runfilters(out, 1)
     THK = Transect((out[3]+out[4])/2., out[0], out[1], out[2])
+    if normalize_thickness:
+        thk = THK.sx / THK.smx
+    else:
+        thk = THK.sx
     DTS = Transect(out[2], out[0], out[1], out[2])
     percent = 100. * DTS.sx / DTS.smx
     fig = plt.figure(figsize=(13, 8))
-    plt.scatter(DTS.sx, THK.sx, c=percent, s=40, cmap='RdBu_r')
+    plt.scatter(DTS.sx, thk, c=percent, s=40, cmap='RdBu_r')
     plt.axis(ymin=0, xmin=0)
     plt.title(fig_title)
     plt.xlabel('Distance on transect (m)')
-    plt.ylabel('Deposit Thickness (cm)')
+    if normalize_thickness:
+        plt.ylabel('Deposit Thickness (fraction of maximum thickness on transect)')
+    else:
+        plt.ylabel('Deposit Thickness (cm)')
     cbar = plt.colorbar(orientation='horizontal', fraction=.075, pad=.1, 
                         aspect=30, shrink=.75, ticks=[0, 25, 50, 75, 100])
     cbar.set_label('Percent of total distance along transect')
@@ -3319,7 +3379,8 @@ if __name__ == '__main__':
             19: toposlope_depositslope,
             }
     ##--Enter commands--##
-#    plotall(menu, "save_fig='png'", show_figs=False)
+#    plotall(menu, kwargs="save_fig='png'", show_figs=False)
 #    a = TsuDBGSFile('GS_Sumatra_Jantang3_T13.csv')
-#    menu[7](Adict, agu_print=False)
-    sublocation_plotter(Adict) # Kulmunai Kuddi
+    percentIL_thickness(Adict, normalize_thickness=True)
+    plt.show()
+#    sublocation_plotter(Adict, 'Pulau Breuh')
