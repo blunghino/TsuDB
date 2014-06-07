@@ -21,7 +21,7 @@ to test all functionality:
 use requirements.txt to install all third party requirements with pip:
     pip install -r requirements.txt
 also requires GS_tools module to be added to PYTHONPATH
-Module available at https://github.com/blunghino/GS_tools
+GS_tools module available at https://github.com/blunghino/GS_tools
 
 @author: Brent Lunghino, USGS, CNTS
 """
@@ -768,6 +768,9 @@ def interp_flowdepth_to_thickness(THK, FLD, keep_nans=False):
     interpolates between flow depth observations 
     such that every thickness observation has a matching flow depth
     THK and FLD must be objects of the Transect class
+    
+    if keep nans, the output arrays will be the same size as the original 
+    thickness array
     """
     THKint = []
     FLDint = []
@@ -856,7 +859,7 @@ def getevents(slocs, Adict, return_mw=False):
     else:
         lookup_key = 'event_lookup'
     for s in slocs:
-        t = tsunami[SLCode == s].min()
+        t = nanmin(tsunami[SLCode == s])
         try:
             event.append(Adict[lookup_key][t])
         except KeyError:
@@ -1365,7 +1368,7 @@ def flowdepth_thickness(Adict, save_fig=False,
         ax1 = plt.subplot(131)
         plt.scatter(FLD.smx, THK.sx, c=THK.sds, s=30, cmap=cmap, vmin=vmin, 
                     vmax=vmax) 
-        plt.scatter(FLD.smx, THK.smxt, c='none', s=60, edgecolors='k', 
+        plt.scatter(flowmx, thickmx, c='none', s=60, edgecolors='k', 
                     linewidths=3, zorder=10)
         if annotate:
             for X, Y in zip(FLD.smx, THK.smxt):
@@ -1435,35 +1438,18 @@ def maxthickness_maxflowdepth(Adict, save_fig=False, agu_print=False,
                     slKey=Adict["SLKey"])
     FLD = Transect(out[5], SLC, TSC, DTS, exclude=exclude, 
                    slKey=Adict["SLKey"])
-    FmaxW = np.zeros_like(FLD.sx)
-    for tnum in set(THK.tnum):
-        filtr = THK.tnum == tnum
-        ## find the maximum flow depth occurring at each sublocation
-        w = FLD.sw[filtr][0]
-        FmaxW[filtr] = nanmax(Adict["ProjectedFlowDepth"][Adict["SLCode"] == w])
-    allevents = getevents(FLD.sw, Adict)
-    fmx, tmx, event, sloc = [], [], [], []
-    for ii, t in enumerate(THK.smxt):
-        if np.isnan(t) or np.isnan(FmaxW[ii]):
-            continue
-        else:
-            tmx.append(t)
-            fmx.append(FmaxW[ii])
-            event.append(allevents[ii])
-            sloc.append(THK.sw[ii])
-    fmx = np.asarray(fmx)
-    tmx = np.asarray(tmx)
-    event = np.asarray(event)
-    sloc = np.asarray(sloc)
+    tmx, fmx, sloc = denan(THK.smxt, FLD.smx, FLD.sw, n_rounds=2)
+    event = np.asarray(getevents(sloc, Adict))
     emap = Adict['emap']
     hands, labs = [], []
     fig = plt.figure(figsize=(13, 9))
     ax = plt.subplot(111)
     if agu_print:
         for e in set(event):
-            p, = plt.plot(fmx[event == e], tmx[event == e], emap[e], ms=12)
-            labs.append(e)
-            hands.append(p)
+            if e:
+                p, = plt.plot(fmx[event == e], tmx[event == e], emap[e], ms=12)
+                labs.append(e)
+                hands.append(p)
         hands, labs = sort_legend_labels(hands, labs)
     else:
         for s in sorted(set(sloc)):
@@ -1477,7 +1463,7 @@ def maxthickness_maxflowdepth(Adict, save_fig=False, agu_print=False,
         plt.plot(fmx, m*fmx+b, 'k-', zorder=-1)
         plt.text(.98, .98, r'$\mathdefault{R^2 =}$ '+str(r2), fontsize=14, 
                  transform=ax.transAxes, ha='right', va='top')
-    ax.set_xlim([0, 20])             
+    ax.set_xlim([0, 25])             
     ax.tick_params(axis='both', which='major', labelsize=18)
     ax.xaxis.set_major_locator(mpl.ticker.LinearLocator(5))
     plt.legend(hands, labs, numpoints=1, frameon=False, loc=2)
@@ -1520,12 +1506,96 @@ def meangs_thickness(Adict, save_fig=False, exclude=True, sand_only=False,
                     slKey=Adict["SLKey"])
     MGS = Transect(out[5], SLC, TSC, DTS, exclude=exclude, 
                    slKey=Adict["SLKey"])
-    fig = plt.figure(figsize=(12, 12))
-    plt.scatter(MGS.sx, THK.sx)
+    events = np.asarray(getevents(MGS.sw, Adict))
+    fig = plt.figure(figsize=(12, 10))
+    handles, labels = [], []
+    for e in set(events):
+        if e:
+            p, = plt.plot(MGS.sx[events == e], THK.sx[events == e], 
+                          Adict['emap'][e], ms=12)
+            handles.append(p)
+            labels.append(e)
     plt.ylim(bottom=0)
     plt.ylabel('Thickness (cm)')
     plt.xlabel(r'Mean Grain Size ($\mathsf{\phi}$)')
     plt.title(fig_title)
+    if sand_only:
+        plt.xlim(gs_min_max)
+        loc = 2
+    else:
+        loc = 1
+    plt.legend(handles, labels, numpoints=1, frameon=False, loc=loc)
+    if save_fig:
+        figsaver(fig, save_fig, fig_title)    
+    print('******************************************************************')
+    return fig
+    
+###############################################################################
+def meangs_flowdepth(Adict, save_fig=False, exclude=True, lin_regress=True,
+                     interpolate_flowdepth=True, sand_only=False, 
+                     fig_title='Flow depth vs mean grain size'):
+    """
+    plot data from Adict - thickness vs flow depth showing mean grain size
+    """
+    print('Running plotting routine:', fig_title)
+    if exclude is True:
+        exclude = Adict['incomplete_transect']
+    if sand_only:
+        # specify min and max grain size to use in gs mean calculation
+        gs_min_max = (4, -1)
+    else:
+        gs_min_max = None
+    gsmeans = get_gsmeans(Adict, gs_min_max=gs_min_max)
+    out = denan(Adict["SLCode"], 
+                Adict["Transect"], 
+                Adict["Distance2shore"], 
+                Adict["ProjectedFlowDepth"],
+                gsmeans,
+                Adict["Modern"], 
+                n_rounds=3
+                )
+    out = runfilters(out, 1)
+    SLC = out[0]
+    TSC = out[1]
+    DTS = out[2]
+    FLD = Transect(out[3], SLC, TSC, DTS, exclude=exclude, 
+                   slKey=Adict["SLKey"])
+    MGS = Transect(out[4], SLC, TSC, DTS, exclude=exclude, 
+                   slKey=Adict["SLKey"])
+    fig = plt.figure(figsize=(12, 10))
+    ax = plt.subplot(111)
+    if interpolate_flowdepth:
+        mgs, fld = interp_flowdepth_to_thickness(MGS, FLD, keep_nans=True)[:2]
+    else:
+        fld = FLD.sx
+        mgs = MGS.sx
+    mgs, fld, slocs = denan(np.asarray(mgs), np.asarray(fld), MGS.sw)
+    events = np.asarray(getevents(slocs, Adict))
+    handles, labels = [], []
+    for e in set(events):
+        if e:
+            p, = plt.plot(fld[events == e], mgs[events == e], Adict['emap'][e], 
+                          ms=12)
+            handles.append(p)
+            labels.append(e)
+    plt.title(fig_title)
+    plt.xlabel('Flow Depth (m)')
+    plt.ylabel(r'Mean Grain Size ($\mathsf{\phi}$)')
+    plt.xlim(xmin=0)
+    if sand_only:
+        plt.ylim(gs_min_max)
+        loc = 2
+    else:
+        ax.invert_yaxis()
+        loc = 4
+    plt.legend(handles, labels, numpoints=1, frameon=False, loc=loc)
+    if lin_regress:
+        fld = np.asarray(fld)
+        m, b, r = linregress(fld, mgs)[:3]
+        plt.plot(fld, fld*m+b, 'k-', zorder=-1)
+        plt.text(.02, .06, 
+                 r'$\mathdefault{R^2 =}$ %0.2f' % r**2,
+                 fontsize=14, transform=ax.transAxes, ha='left', va='top')
     if save_fig:
         figsaver(fig, save_fig, fig_title)    
     print('******************************************************************')
@@ -1574,11 +1644,15 @@ def meangs_flowdepth_thickness(Adict, save_fig=False, exclude=True,
     extend = 'neither'
     if interpolate_flowdepth:
         thk, fld = interp_flowdepth_to_thickness(THK, FLD, keep_nans=True)[:2]
+        thk = np.asarray(thk)
+        fld = np.asarray(fld)
     else:
         thk = THK.sx
         fld = FLD.sx
-    p = plt.scatter(thk, fld, c=MGS.sx, s=50, vmin=vmin, vmax=vmax, 
-                    cmap='hot_r')
+    japan_sloc = nanmin([k for (k, v) in Adict['SLKey'].items() if v == 'Sendai'])
+    t = nanmin(FLD.tnum[FLD.sw == japan_sloc])
+    p = plt.scatter(fld[FLD.tnum == t], thk[FLD.tnum == t], c=MGS.sx[FLD.tnum == t],
+                    s=50, vmin=vmin, vmax=vmax, cmap='hot_r')
     plt.title(fig_title)
     plt.xlabel('Flow Depth (m)')
     plt.ylabel('Deposit Thickness (cm)')
@@ -1643,7 +1717,8 @@ def slope_flowdepth_thickness(Adict, save_fig=False,
   
 ###############################################################################
 def percentIL_thickness(Adict, save_fig=False, inset_map=False, 
-                        normalize_thickness=False, fig_title=\
+                        normalize_thickness=False, min_transect_points=1,
+                        fig_title=\
              'Distance to shore as percent of inundation limit vs thickness'):
     """
     plot data from Adict- percent of inundation limit vs thickness
@@ -1668,33 +1743,40 @@ def percentIL_thickness(Adict, save_fig=False, inset_map=False,
     INL = Transect(out[5], SLC, TSC, DTS)
     LAT = out[6]
     LON = out[7]
+    
+    filtr = THK.tnum >= 0
+    for t in set(THK.tnum):
+        f = THK.tnum == t
+        if len(f.nonzero()[0]) < min_transect_points:
+            filtr[f] = False
     x = 100 * THK.sds / INL.sx
+    x = x[filtr]
     if normalize_thickness:
         thk_norm = THK.sx / THK.smx
         nplots = 3
     else:
         nplots = 2
-    fig = plt.figure(figsize=(11, 8))
+    fig = plt.figure(figsize=(15, 12))
     plt.subplot(nplots, 1, 1)
-    plt.scatter(x, THK.sx)
+    plt.scatter(x, THK.sx[filtr])
     plt.xlim([0,100])
     plt.ylim(ymin=0)
     plt.title(fig_title)
     plt.ylabel('Deposit Thickness (cm)')
     plt.xlabel('Distance from shore (% of inundation limit)')
     plt.subplot(nplots, 1, 2)
-    plt.scatter(x, THK.smxt)
+    plt.scatter(x, THK.smxt[filtr])
     plt.xlim([0,100])
     plt.ylim(ymin=0)
     plt.xlabel('Distance from shore (% of inundation limit)')
     plt.ylabel('Maximum Deposit Thickness (cm)')
     if normalize_thickness:
         plt.subplot(nplots, 1, 3)
-        plt.scatter(x, thk_norm)
+        plt.scatter(x, thk_norm[filtr])
         plt.xlim([0,100])
         plt.ylim([0,1])
         plt.xlabel('Distance from shore (% of inundation limit)')
-        plt.ylabel('Deposit Thickness (fraction of maximum transect thickness)')
+        plt.ylabel('Deposit Thickness \n(fraction of maximum \ntransect thickness)')
     if inset_map:
         fig = insetmap(fig, LAT, LON, full_globe=True)    
     if save_fig:
@@ -1703,7 +1785,8 @@ def percentIL_thickness(Adict, save_fig=False, inset_map=False,
     return fig
 
 ###############################################################################    
-def percentIL_flowdepth(Adict, save_fig=False, fig_title=\
+def percentIL_flowdepth(Adict, save_fig=False, normalize_flowdepth=True,
+                        min_transect_points=1, fig_title=\
             'Distance to shore as percent inundation limit vs flow depth'):
     """
     plot data from Adict- percent of inundation limit vs flow depth
@@ -1723,21 +1806,39 @@ def percentIL_flowdepth(Adict, save_fig=False, fig_title=\
     DTS = out[2]    
     FLD = Transect(out[3], SLC, TSC, DTS)
     INL = Transect(out[4], SLC, TSC, DTS)
-    x = 100. * FLD.sds / INL.sx
-    fig = plt.figure(figsize=(11, 8))
-    plt.subplot(211)
-    plt.scatter(x, FLD.sx)
+    filtr = FLD.tnum >= 0
+    for t in set(FLD.tnum):
+        f = FLD.tnum == t
+        if len(f.nonzero()[0]) < min_transect_points:
+            filtr[f] = False
+    x = 100 * FLD.sds / INL.sx
+    x = x[filtr]
+    if normalize_flowdepth:
+        fld_norm = FLD.sx / FLD.smx
+        nplots = 3
+    else:
+        nplots = 2    
+    fig = plt.figure(figsize=(15, 12))
+    plt.subplot(nplots, 1, 1)
+    plt.scatter(x, FLD.sx[filtr])
     plt.xlim([0,100])
     plt.ylim(ymin=0)
     plt.title(fig_title)
     plt.ylabel('Flow depth (m)')
     plt.xlabel('Distance from shore (% of inundation limit)')
-    plt.subplot(212)
-    plt.scatter(x, FLD.smxt)
+    plt.subplot(nplots, 1, 2)
+    plt.scatter(x, FLD.smxt[filtr])
     plt.xlim([0,100])
     plt.ylim(ymin=0)
     plt.xlabel('Distance from shore (% of inundation limit)')
     plt.ylabel('Maximum flow depth (m)')
+    if normalize_flowdepth:
+        plt.subplot(nplots, 1, 3)
+        plt.scatter(x, fld_norm[filtr])
+        plt.xlim([0,100])
+        plt.ylim([0,1])
+        plt.xlabel('Distance from shore (% of inundation limit)')
+        plt.ylabel('Flow depth \n(fraction of maximum \ntransect flowdepth)')
     if save_fig:
         figsaver(fig, save_fig, fig_title)
     print('******************************************************************')
@@ -2334,13 +2435,13 @@ def volume_flowdepth(Adict, save_fig=False, agu_print=True,
         ## Volume is the sum of each deposit section area
         volume = np.nansum(A[filtr])
         if not np.isnan(volume):
-            V.append(volume)
-            ## find the maximum flow depth occurring at each sublocation
+            V.append(volume)    
             w = FLD.sw[filtr][0]
-            FmaxW.append(nanmax(Adict["ProjectedFlowDepth"][Adict["SLCode"] == w]))
+            ## find the maximum flow depth ocurring on each transect
+            FmaxT.append(FLD.smx[filtr][0])
             if not agu_print:
-                ## find the maximum flow depth ocurring on each transect
-                FmaxT.append(FLD.smx[filtr][0])
+                ## find the maximum flow depth occurring at each sublocation
+                FmaxW.append(nanmax(Adict["ProjectedFlowDepth"][Adict["SLCode"] == w]))
                 ## max of transect if it exists else max of sublocation
                 if not np.isnan(FmaxT[-1]):
                     FmaxTW.append(FmaxT[-1])
@@ -2358,10 +2459,10 @@ def volume_flowdepth(Adict, save_fig=False, agu_print=True,
     if agu_print:
         event = getevents(sloc, Adict)
         ## remove locations with no data
-        for ii, f in enumerate(FmaxW):
+        for ii, f in enumerate(FmaxT):
             if np.isnan(f):
                 V.pop(ii)
-                FmaxW.pop(ii)
+                FmaxT.pop(ii)
                 event.pop(ii)
         emap = Adict['emap']
         hands, labs = [], []
@@ -2375,7 +2476,7 @@ def volume_flowdepth(Adict, save_fig=False, agu_print=True,
                    fontsize=18)
         for ii, e in enumerate(event):
             if e:
-                p, = plt.plot(FmaxW[ii], V[ii], emap[e], ms=12, label=e)
+                p, = plt.plot(FmaxT[ii], V[ii], emap[e], ms=12, label=e)
                 if e not in labs:
                     labs.append(e)
                     hands.append(p)
@@ -2424,9 +2525,8 @@ def volume_flowdepth(Adict, save_fig=False, agu_print=True,
     return fig
 
 ###############################################################################
-def averagethickness_flowdepth(Adict, save_fig=False,
-                                 exclude=True, max_on_transect=False,
-                                 agu_print=False, fig_title=\
+def averagethickness_flowdepth(Adict, save_fig=False, max_on_transect=False,
+                               exclude=True, agu_print=False, fig_title=\
                                  'Average Thickness vs Maximum Flow Depth'):
     """
     plot the average deposit thickness by sublocation versus the max flow depth
@@ -3381,6 +3481,7 @@ if __name__ == '__main__':
     ##--Enter commands--##
 #    plotall(menu, kwargs="save_fig='png'", show_figs=False)
 #    a = TsuDBGSFile('GS_Sumatra_Jantang3_T13.csv')
-    percentIL_thickness(Adict, normalize_thickness=True)
+    meangs_flowdepth_thickness(Adict, interpolate_flowdepth=True)
+    meangs_flowdepth_thickness(Adict, interpolate_flowdepth=True, sand_only=True)
     plt.show()
 #    sublocation_plotter(Adict, 'Pulau Breuh')
