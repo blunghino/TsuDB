@@ -37,7 +37,7 @@ from tkinter import filedialog
 import xlrd
 import numpy as np
 import matplotlib as mpl
-from scipy.stats import linregress
+from scipy.stats import linregress, nanmean
 from scipy import nanmax, nanmin, nanargmax  
 from matplotlib import cm, pyplot as plt
 
@@ -981,7 +981,7 @@ def lookup_tnum(slcode, Trnsct, negative_slcodes_where_no_transect=True):
         tnums = set(tnums)
     for tnum in tnums:
         yield tnum
-        
+    
 ###############################################################################
 def figsaver(fig, save_fig, fig_title='untitled', overwrite=False, dpi=450,
              transparent=False):
@@ -1026,6 +1026,30 @@ def figsaver(fig, save_fig, fig_title='untitled', overwrite=False, dpi=450,
         plt.savefig(path, dpi=dpi, transparent=transparent)
     print('Saved figure "' + fig_title + '" as ' + path)
     
+###############################################################################
+def average_in_percentiles(x, y, block=.1):
+    """
+    average `y` over every `block` fraction of `x`
+    `block` must be the result of 1 divided by any positive integer.
+    returns two numpy arrays of equal length, `block` size fractions of 1 and 
+    average values of `y` over the fractions
+    """
+    ind = np.argsort(x)
+    x = x[ind]
+    y = y[ind]
+    xp = x / nanmax(x)
+    fractions = np.arange(0, 1, block)
+    yp = np.zeros_like(fractions)
+    for ii, p in enumerate(fractions):
+        f1 = xp >= p
+        if p + block == 1:
+            f2 = xp <= p + block
+        else:
+            f2 = xp < p + block
+        filtr = f1 * f2
+        yp[ii] = nanmean(y[filtr])
+    return fractions, yp
+
 ###############################################################################
 def filter_outliers(x, n_sigma=3):
     """
@@ -1718,10 +1742,19 @@ def slope_flowdepth_thickness(Adict, save_fig=False,
 ###############################################################################
 def percentIL_thickness(Adict, save_fig=False, inset_map=False, 
                         normalize_thickness=False, min_transect_points=1,
-                        fig_title=\
+                        average_fraction=.1, fig_title=\
              'Distance to shore as percent of inundation limit vs thickness'):
     """
     plot data from Adict- percent of inundation limit vs thickness
+    
+    if normalize_thickness, make a subplot with thicknesses normalized to max 
+    thickness
+    
+    min_transect_points specifies the number of points on a transect required 
+    to include a data for that transect
+    
+    average_fraction specifies the fraction interval over which to average, if
+    None, do not average
     """
     print('Running plotting routine:', fig_title)
     out = denan(Adict["SLCode"], 
@@ -1743,7 +1776,6 @@ def percentIL_thickness(Adict, save_fig=False, inset_map=False,
     INL = Transect(out[5], SLC, TSC, DTS)
     LAT = out[6]
     LON = out[7]
-    
     filtr = THK.tnum >= 0
     for t in set(THK.tnum):
         f = THK.tnum == t
@@ -1759,6 +1791,13 @@ def percentIL_thickness(Adict, save_fig=False, inset_map=False,
     fig = plt.figure(figsize=(15, 12))
     plt.subplot(nplots, 1, 1)
     plt.scatter(x, THK.sx[filtr])
+    if average_fraction is not None:
+        ## calculate average for each average_fraction sized block
+        fractions, av_thk = average_in_percentiles(x, THK.sx[filtr], 
+                                                   block=average_fraction)
+        ## midpoint of blocks scaled to percent                                         
+        fractions = 100*(fractions+(average_fraction/2))
+        plt.plot(fractions, av_thk, 'r*', ms=16)
     plt.xlim([0,100])
     plt.ylim(ymin=0)
     plt.title(fig_title)
@@ -1786,7 +1825,7 @@ def percentIL_thickness(Adict, save_fig=False, inset_map=False,
 
 ###############################################################################    
 def percentIL_flowdepth(Adict, save_fig=False, normalize_flowdepth=True,
-                        min_transect_points=1, fig_title=\
+                        min_transect_points=1, average_fraction=.1, fig_title=\
             'Distance to shore as percent inundation limit vs flow depth'):
     """
     plot data from Adict- percent of inundation limit vs flow depth
@@ -1821,6 +1860,13 @@ def percentIL_flowdepth(Adict, save_fig=False, normalize_flowdepth=True,
     fig = plt.figure(figsize=(15, 12))
     plt.subplot(nplots, 1, 1)
     plt.scatter(x, FLD.sx[filtr])
+    if average_fraction is not None:
+        ## calculate average for each average_fraction sized block
+        fractions, av_fld = average_in_percentiles(x, FLD.sx[filtr], 
+                                                   block=average_fraction)
+        ## midpoint of blocks scaled to percent                                         
+        fractions = 100*(fractions+(average_fraction/2))
+        plt.plot(fractions, av_fld, 'r*', ms=16)
     plt.xlim([0,100])
     plt.ylim(ymin=0)
     plt.title(fig_title)
@@ -3420,12 +3466,12 @@ class TsuDBGSFile(GSFile):
 ###############################################################################
 def main(
         xls_file_name='TsunamiSediments_AllData_BL_March2014_r6.xlsx', 
-        dict_filename = "TsuDB_Adict_2014-02-18.pkl",
+        dict_filename = "TsuDB_Adict_2014-06-17.pkl",
         from_xls=True,
         save_dict=False,
         saveas_dict=True,
         TDB_DIR=None
-        ):
+    ):
     """
     load in Adict to make TsuDB data available for plotting routines
     """
@@ -3454,7 +3500,7 @@ def main(
 
 ############################################################################### 
 if __name__ == '__main__':
-    Adict = main()
+    Adict = main(from_xls=False)
         
     ##--Plotting routines menu--##
     menu = {
@@ -3481,7 +3527,9 @@ if __name__ == '__main__':
     ##--Enter commands--##
 #    plotall(menu, kwargs="save_fig='png'", show_figs=False)
 #    a = TsuDBGSFile('GS_Sumatra_Jantang3_T13.csv')
-    meangs_flowdepth_thickness(Adict, interpolate_flowdepth=True)
-    meangs_flowdepth_thickness(Adict, interpolate_flowdepth=True, sand_only=True)
+    percentIL_thickness(Adict, normalize_thickness=True, min_transect_points=2)
+    percentIL_flowdepth(Adict, normalize_flowdepth=True, min_transect_points=2)
+    percentIL_thickness(Adict, normalize_thickness=True, min_transect_points=2, average_fraction=.25)
+    percentIL_flowdepth(Adict, normalize_flowdepth=True, min_transect_points=2, average_fraction=.25)
     plt.show()
 #    sublocation_plotter(Adict, 'Pulau Breuh')
