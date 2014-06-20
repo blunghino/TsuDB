@@ -1323,7 +1323,7 @@ def flowdepth_slope(Adict, save_fig=False,
     return fig
     
 ###############################################################################
-def flowdepth_thickness(Adict, save_fig=False, 
+def flowdepth_thickness(Adict, save_fig=False, poly_fit=None,
                           fig_title='Flow Depth vs Thickness', 
                           annotate=False, agu_print=True, exclude=None):
     """
@@ -1367,9 +1367,16 @@ def flowdepth_thickness(Adict, save_fig=False,
                 if e not in labs:
                     labs.append(e)
                     hands.append(p)
-        plt.plot(FLDint, line3_, 'k-', zorder=-1)
-        plt.text(.98, .98, r'$\mathdefault{R^2 =}$ '+str(r2_), fontsize=14, 
+        if poly_fit is None:
+            plt.plot(FLDint, line3_, 'k-', zorder=-1)        
+            plt.text(.98, .98, r'$\mathdefault{R^2 =}$ '+str(r2_), fontsize=14, 
                  transform=ax.transAxes, ha='right', va='top')
+        else:
+            ind = np.argsort(FLDint)
+            P = np.polyfit(FLDint[ind], THKint[ind], poly_fit)
+            F = np.poly1d(P)
+            xp = np.linspace(FLDint.min(), FLDint.max(), 500)
+            plt.plot(xp, F(xp), 'k-')
         ax.tick_params(axis='both', which='major', labelsize=18)        
         hands, labs = sort_legend_labels(hands, labs)
         plt.legend(hands, labs, numpoints=1, frameon=False, loc=2)
@@ -1812,6 +1819,13 @@ def percentIL_thickness(Adict, save_fig=False, inset_map=False,
     if normalize_thickness:
         plt.subplot(nplots, 1, 3)
         plt.scatter(x, thk_norm[filtr])
+        if average_fraction is not None:
+            ## calculate average for each average_fraction sized block
+            fractions, av_norm_thk = average_in_percentiles(x, thk_norm[filtr], 
+                                                       block=average_fraction)
+            ## midpoint of blocks scaled to percent                                         
+            fractions = 100*(fractions+(average_fraction/2))
+            plt.plot(fractions, av_norm_thk, 'r*', ms=16)
         plt.xlim([0,100])
         plt.ylim([0,1])
         plt.xlabel('Distance from shore (% of inundation limit)')
@@ -1881,6 +1895,13 @@ def percentIL_flowdepth(Adict, save_fig=False, normalize_flowdepth=True,
     if normalize_flowdepth:
         plt.subplot(nplots, 1, 3)
         plt.scatter(x, fld_norm[filtr])
+        if average_fraction is not None:
+            ## calculate average for each average_fraction sized block
+            fractions, av_norm_fld = average_in_percentiles(x, fld_norm[filtr], 
+                                                       block=average_fraction)
+            ## midpoint of blocks scaled to percent                                         
+            fractions = 100*(fractions+(average_fraction/2))
+            plt.plot(fractions, av_norm_fld, 'r*', ms=16)
         plt.xlim([0,100])
         plt.ylim([0,1])
         plt.xlabel('Distance from shore (% of inundation limit)')
@@ -3527,9 +3548,7 @@ if __name__ == '__main__':
     ##--Enter commands--##
 #    plotall(menu, kwargs="save_fig='png'", show_figs=False)
 #    a = TsuDBGSFile('GS_Sumatra_Jantang3_T13.csv')
-    percentIL_thickness(Adict, normalize_thickness=True, min_transect_points=2)
-    percentIL_flowdepth(Adict, normalize_flowdepth=True, min_transect_points=2)
-    percentIL_thickness(Adict, normalize_thickness=True, min_transect_points=2, average_fraction=.25)
-    percentIL_flowdepth(Adict, normalize_flowdepth=True, min_transect_points=2, average_fraction=.25)
+    percentIL_thickness(Adict, average_fraction=.1, min_transect_points=2, normalize_thickness=True)
+    percentIL_flowdepth(Adict, average_fraction=.1, min_transect_points=2, normalize_flowdepth=True)
     plt.show()
 #    sublocation_plotter(Adict, 'Pulau Breuh')
