@@ -1355,13 +1355,90 @@ def flowdepth_slope(Adict, save_fig=False,
     return fig
 
 ###############################################################################
+def sedimentconcentration_histogram(Adict, save_fig=False, 
+                                fig_title='Sediment Concentration Histogram'):
+    """
+    plot data from Adict- flow depth vs thickness on a semilog plot
+    """
+    print('Running plotting routine:', fig_title)
+    out = denan(Adict["SLCode"], 
+                Adict["Transect"], 
+                Adict["Distance2shore"], 
+                Adict["Thickness"], 
+                Adict["MaxThickness"], 
+                Adict["ProjectedFlowDepth"], 
+                Adict["Modern"], 
+                n_rounds=3
+                )
+    out = runfilters(out, 1)
+    SLC = out[0]
+    TSC = out[1]
+    DTS = out[2]
+    THK = Transect((out[3]+out[4])/2., SLC, TSC, DTS)    
+    FLD = Transect(out[5], SLC, TSC, DTS)
+    THKint, FLDint = interp_flowdepth_to_thickness(THK, FLD)[:2]
+    FLDint = np.asarray(FLDint)
+    THKint = np.asarray(THKint)
+    conc = THKint/FLDint
+    weights = (100/len(conc)) * np.ones_like(conc)
+    fig = plt.figure()
+    plt.hist(conc, bins=25, weights=weights)
+    plt.ylabel('Frequency (%)')
+    plt.xlabel('Sediment Concentration (%)')
+    if save_fig:
+        figsaver(fig, save_fig, fig_title)
+    print('******************************************************************')   
+    return fig
+    
+###############################################################################
 def flowdepth_thickness_semilog(Adict, save_fig=False, 
                                 fig_title='Flow Depth vs Thickness Semi Log'):
     """
     plot data from Adict- flow depth vs thickness on a semilog plot
     """
     print('Running plotting routine:', fig_title)
-    fig = plt.figure()
+    out = denan(Adict["SLCode"], 
+                Adict["Transect"], 
+                Adict["Distance2shore"], 
+                Adict["Thickness"], 
+                Adict["MaxThickness"], 
+                Adict["ProjectedFlowDepth"], 
+                Adict["Modern"], 
+                n_rounds=3
+                )
+    out = runfilters(out, 1)
+    SLC = out[0]
+    TSC = out[1]
+    DTS = out[2]
+    THK = Transect((out[3]+out[4])/2., SLC, TSC, DTS)    
+    FLD = Transect(out[5], SLC, TSC, DTS)
+    THKint, FLDint, _, tnumint = interp_flowdepth_to_thickness(THK, FLD)
+    FLDint = np.asarray(FLDint)
+    THKint = np.asarray(THKint)
+    m, b, r = linregress(FLDint, THKint)[:3]
+    r2 = round(r**2, 2)
+    line = m*FLDint + b
+    labs, hands = [], []
+    FLD_tnum = list(FLD.tnum)
+    sloc = [FLD.sw[FLD_tnum.index(t)] for t in tnumint]
+    event = np.asarray(getevents(sloc, Adict))
+    emap = Adict['emap']
+    fig = plt.figure(figsize=(13, 9))
+    ax = plt.subplot(111)
+    for e in set(event):
+        if e:
+            p, = plt.plot(FLDint[event == e], THKint[event == e], emap[e], ms=12)
+            if e not in labs:
+                labs.append(e)
+                hands.append(p)
+    ind = np.argsort(FLDint)
+    plt.plot(FLDint[ind], line[ind], 'k-')
+    ax.set_xscale('log')
+    plt.text(.98, .98, r'$\mathdefault{R^2 =}$ '+str(r2), fontsize=14, 
+             transform=ax.transAxes, ha='right', va='top')
+    plt.xlabel('Flow Depth (m)')
+    plt.ylabel('Deposit Thickness (cm)')
+    plt.legend(hands, labs, numpoints=1, loc=2)
     if save_fig:
         figsaver(fig, save_fig, fig_title)
     print('******************************************************************')   
@@ -3640,6 +3717,7 @@ if __name__ == '__main__':
     ##--Enter commands--##
 #    plotall(menu, kwargs="save_fig='png'", show_figs=False)
 #    a = TsuDBGSFile('GS_Sumatra_Jantang3_T13.csv')
-    flowdepth_maxsuspensiongradedlayerthickness(Adict)
+    flowdepth_thickness_semilog(Adict)
+    sedimentconcentration_histogram(Adict)
     plt.show()
 #    sublocation_plotter(Adict, 'Pulau Breuh')
