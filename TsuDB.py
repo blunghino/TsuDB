@@ -948,9 +948,41 @@ def get_gsmeans(Adict, gs_min_max=None):
                 gsmeans[ii] = TsuDBGSFile(gs).bulk_mean(gs_min_max=gs_min_max)
             except FileNotFoundError or ValueError as e:
                 print(e)
-                print('Error from', gs)
+                print('TsuDB.get_gsmeans: Error at', gs)
                 continue
     return gsmeans
+    
+###############################################################################
+def get_maxsuspensiongradedlayerthickness(Adict):
+    """
+    reads in all grain size data files and returns an array of thickness of 
+    the thickest suspension graded layer in the trench/core
+    """
+    sglt = np.ones_like(Adict['Thickness']) * np.nan
+    for ii, filename in enumerate(Adict['GSFileUniform']):
+        if filename:
+            try:
+                ## create a TsuDBGSFile object for each grain size data file
+                gs = TsuDBGSFile(filename)
+            except FileNotFoundError as e:
+                print(e)
+                print('TsuDB.get_maxsuspensiongradedlayerthickness: Error at',
+                      gs)
+                continue
+            temp = []
+            ## filter out layers that are not classified as suspension graded
+            f1 = gs.layer_type == 1
+            for x in sorted(set(gs.layer[f1])):
+                ## for each suspension graded layer, calculate the thickness 
+                ## by subtracting the minimum and maximum depth
+                f2 = gs.layer == x
+                f3 = f1 * f2
+                mn = min(gs.min_depth[f3])
+                mx = max(gs.max_depth[f3])
+                temp.append(mx-mn)
+            if temp:
+                sglt[ii] = max(temp)
+    return sglt
     
 ###############################################################################
 def lookup_SLCode(string, slKey):
@@ -1321,6 +1353,19 @@ def flowdepth_slope(Adict, save_fig=False,
         figsaver(fig, save_fig, fig_title)
     print('******************************************************************')
     return fig
+
+###############################################################################
+def flowdepth_thickness_semilog(Adict, save_fig=False, 
+                                fig_title='Flow Depth vs Thickness Semi Log'):
+    """
+    plot data from Adict- flow depth vs thickness on a semilog plot
+    """
+    print('Running plotting routine:', fig_title)
+    fig = plt.figure()
+    if save_fig:
+        figsaver(fig, save_fig, fig_title)
+    print('******************************************************************')   
+    return fig
     
 ###############################################################################
 def flowdepth_thickness(Adict, save_fig=False, poly_fit=None,
@@ -1500,6 +1545,53 @@ def maxthickness_maxflowdepth(Adict, save_fig=False, agu_print=False,
     plt.legend(hands, labs, numpoints=1, frameon=False, loc=2)
     plt.xlabel('Maximum Flow Depth (m)', fontsize=18)
     plt.ylabel('Maximum Deposit Thickness (cm)', fontsize=18)
+    if save_fig:
+        figsaver(fig, save_fig, fig_title)
+    print('******************************************************************')
+    return fig
+    
+###############################################################################
+def flowdepth_maxsuspensiongradedlayerthickness(Adict, save_fig=False, 
+                                                   exclude=True, fig_title= \
+            'Maximum Flow Depth vs Maximum Suspension Graded Layer Thickness'):
+    print('Running plotting routine:', fig_title)    
+    if exclude:
+        exclude = Adict['incomplete_transect']
+    sglt = get_maxsuspensiongradedlayerthickness(Adict)
+    out = denan(Adict["SLCode"], 
+                Adict["Transect"], 
+                Adict["Distance2shore"],
+                Adict['ProjectedFlowDepth'], 
+                sglt,
+                Adict['Modern'],
+                n_rounds=3)
+    out = runfilters(out, 1)
+    SLC = out[0]
+    TSC = out[1]
+    DTS = out[2]
+    FLD = Transect(out[3], SLC, TSC, DTS, exclude=exclude, 
+                   slKey=Adict["SLKey"])
+    SGLT = Transect(out[4], SLC, TSC, DTS, exclude=exclude, 
+                    slKey=Adict['SLKey'])
+    sglt_int, fld_int, _, tnum_int = interp_flowdepth_to_thickness(SGLT, FLD)
+    sglt_int = np.asarray(sglt_int)
+    fld_int = np.asarray(fld_int)
+    FLD_tnum = list(FLD.tnum)
+    slocs = [FLD.sw[FLD_tnum.index(t)] for t in tnum_int]
+    events = np.asarray(getevents(slocs, Adict))
+    hands, labs = [], []
+    emap = Adict['emap']
+    fig = plt.figure()
+    for e in set(events):
+        if e:
+            p, = plt.plot(fld_int[events == e], sglt_int[events == e], emap[e], 
+                          ms=12)
+            if e not in labs:
+                labs.append(e)
+                hands.append(p)
+    plt.xlabel('Flow Depth (m)')
+    plt.ylabel('Suspension Graded Layer Thickness (cm)')
+    plt.legend(hands, labs, numpoints=1)
     if save_fig:
         figsaver(fig, save_fig, fig_title)
     print('******************************************************************')
@@ -3487,7 +3579,7 @@ class TsuDBGSFile(GSFile):
 ###############################################################################
 def main(
         xls_file_name='TsunamiSediments_AllData_BL_March2014_r6.xlsx', 
-        dict_filename = "TsuDB_Adict_2014-06-17.pkl",
+        dict_filename = "TsuDB_Adict_2014-07-07.pkl",
         from_xls=True,
         save_dict=False,
         saveas_dict=True,
@@ -3548,7 +3640,6 @@ if __name__ == '__main__':
     ##--Enter commands--##
 #    plotall(menu, kwargs="save_fig='png'", show_figs=False)
 #    a = TsuDBGSFile('GS_Sumatra_Jantang3_T13.csv')
-    percentIL_thickness(Adict, average_fraction=.1, min_transect_points=2, normalize_thickness=True)
-    percentIL_flowdepth(Adict, average_fraction=.1, min_transect_points=2, normalize_flowdepth=True)
+    flowdepth_maxsuspensiongradedlayerthickness(Adict)
     plt.show()
 #    sublocation_plotter(Adict, 'Pulau Breuh')
