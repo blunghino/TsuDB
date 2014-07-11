@@ -1093,8 +1093,11 @@ def percentile_by_bin(bin_data, perc_data, percentile=50, bin_size=1):
     bins = np.arange(min(bin_data), max(bin_data), bin_size)
     percs = np.ones_like(bins) * np.nan
     for ii, b in enumerate(bins):
-        f1 = bin_data >= b
-        f2 = bin_data < b+bin_size
+        if ii == 0:
+            f1 = bin_data >= b
+        else:
+            f1 = bin_data > b
+        f2 = bin_data <= b+bin_size
         try:
             percs[ii] = np.percentile(perc_data[f1 * f2], percentile)
         except ValueError:
