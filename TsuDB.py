@@ -37,7 +37,7 @@ from tkinter import filedialog
 import xlrd
 import numpy as np
 import matplotlib as mpl
-from scipy.stats import linregress, nanmean
+from scipy.stats import linregress, nanmean, gmean
 from scipy import nanmax, nanmin, nanargmax  
 from matplotlib import cm, pyplot as plt
 
@@ -1083,6 +1083,31 @@ def average_in_percentiles(x, y, block=.1):
     return fractions, yp
 
 ###############################################################################
+def percentile_by_bin(bin_data, perc_data, percentile=50, bin_size=1):
+    """
+    calculate the `percentile` percentile value of `median_data` in each 
+    `bin_size` bin of `bin_data`
+    returns `bins`, `bin_data` in `bin_size` size bins and `percs` the
+    percentile values for each bin
+    """
+    bins = np.arange(min(bin_data), max(bin_data), bin_size)
+    percs = np.ones_like(bins) * np.nan
+    for ii, b in enumerate(bins):
+        f1 = bin_data >= b
+        f2 = bin_data < b+bin_size
+        try:
+            percs[ii] = np.percentile(perc_data[f1 * f2], percentile)
+        except ValueError:
+            ## no data in a bin...
+            percs[ii] = np.nan
+    bins = bins + (bin_size/2)
+    ## remove nans from result
+    filtr = notnan(percs)
+    bins = bins[filtr]
+    percs = percs[filtr]
+    return bins, percs
+
+###############################################################################
 def filter_outliers(x, n_sigma=3):
     """
     create a filter that is false for all values from numpy array x that 
@@ -1358,7 +1383,7 @@ def flowdepth_slope(Adict, save_fig=False,
 def sedimentconcentration_histogram(Adict, save_fig=False, 
                                 fig_title='Sediment Concentration Histogram'):
     """
-    plot data from Adict- flow depth vs thickness on a semilog plot
+    plot data from Adict- histogram of sediment concentrations
     """
     print('Running plotting routine:', fig_title)
     out = denan(Adict["SLCode"], 
@@ -1381,14 +1406,79 @@ def sedimentconcentration_histogram(Adict, save_fig=False,
     THKint = np.asarray(THKint)
     conc = THKint/FLDint
     weights = (100/len(conc)) * np.ones_like(conc)
+    g_avg = gmean(conc[conc > 0])
+    a_avg = np.mean(conc)
     fig = plt.figure()
+    ax = plt.subplot(111)
     plt.hist(conc, bins=25, weights=weights)
+    plt.text(.95, .92, 'Geometric Mean = {:.2}'.format(g_avg), ha='right',
+             transform=ax.transAxes)
+    plt.text(.95, .85, 'Arithmetic Mean = {:.2}'.format(a_avg), ha='right',
+             transform=ax.transAxes)
     plt.ylabel('Frequency (%)')
     plt.xlabel('Sediment Concentration (%)')
     if save_fig:
         figsaver(fig, save_fig, fig_title)
     print('******************************************************************')   
     return fig
+    
+###############################################################################
+def sedimentconcentration_distance(Adict, save_fig=False, 
+                      fig_title='Sediment Concentration vs Distance to Shore'):
+    """
+    plot data from Adict- sediment concentration vs distance from shore
+    """
+    print('Running plotting routine:', fig_title)
+    out = denan(Adict["SLCode"], 
+                Adict["Transect"], 
+                Adict["Distance2shore"], 
+                Adict["Thickness"], 
+                Adict["MaxThickness"], 
+                Adict["ProjectedFlowDepth"], 
+                Adict["Modern"], 
+                n_rounds=3
+                )
+    out = runfilters(out, 1)
+    SLC = out[0]
+    TSC = out[1]
+    DTS = out[2]
+    THK = Transect((out[3]+out[4])/2., SLC, TSC, DTS)    
+    FLD = Transect(out[5], SLC, TSC, DTS)
+    THKint, FLDint, DTSint, TNUMint = interp_flowdepth_to_thickness(THK, FLD)
+    FLDint = np.asarray(FLDint)
+    THKint = np.asarray(THKint)
+    conc = THKint / FLDint
+    f1 = conc > 0
+    DTSint = np.asarray(DTSint)
+    m, b, r = linregress(DTSint[f1], conc[f1])[:3]
+    r2 = round(r**2, 2)
+    line = m*DTSint[f1] + b
+    labs, hands = [], []
+    FLD_tnum = list(FLD.tnum)
+    sloc = [FLD.sw[FLD_tnum.index(t)] for t in TNUMint]
+    event = np.asarray(getevents(sloc, Adict))
+    emap = Adict['emap']
+    fig = plt.figure()
+    ax = plt.subplot(111)
+    for e in set(event):
+        if e:
+            p, = plt.plot(DTSint[event == e], conc[event == e], emap[e], ms=12)
+            if e not in labs:
+                labs.append(e)
+                hands.append(p)
+    ind = np.argsort(DTSint[f1])
+    plt.plot(DTSint[f1][ind], line[ind], 'k-')
+    plt.text(.98, .98, r'$\mathdefault{R^2 =}$ '+str(r2), fontsize=14, 
+             transform=ax.transAxes, ha='right', va='top')
+    plt.ylabel('Sediment Concentration (%)')
+    plt.xlabel('Distance to Shore (m)')
+    plt.legend(hands, labs, numpoints=1, loc=4)
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    if save_fig:
+        figsaver(fig, save_fig, fig_title)
+    print('******************************************************************')   
+    return fig  
     
 ###############################################################################
 def flowdepth_thickness_semilog(Adict, save_fig=False, 
@@ -1417,7 +1507,8 @@ def flowdepth_thickness_semilog(Adict, save_fig=False,
     THKint = np.asarray(THKint)
     m, b, r = linregress(FLDint, THKint)[:3]
     r2 = round(r**2, 2)
-    line = m*FLDint + b
+    w = np.sort(FLDint)
+    line1 = m*w + b
     labs, hands = [], []
     FLD_tnum = list(FLD.tnum)
     sloc = [FLD.sw[FLD_tnum.index(t)] for t in tnumint]
@@ -1431,14 +1522,36 @@ def flowdepth_thickness_semilog(Adict, save_fig=False,
             if e not in labs:
                 labs.append(e)
                 hands.append(p)
-    ind = np.argsort(FLDint)
-    plt.plot(FLDint[ind], line[ind], 'k-')
+    p, = plt.plot(w, line1, 'b-', lw=2)
+    print('Linear Regression: y = {m:.2}x + {b:.2}'.format(m=m, b=b))
+    labs.append('Linear Regression ({})'.format(r2))
+    hands.append(p)
+    for ls, perc in [('--', 10), ('-', 50), ('-.', 90)]:
+        label = '{}th Percentile Linear Regression'.format(perc)
+        bins, percs = percentile_by_bin(FLDint, THKint, percentile=perc, 
+                                        bin_size=1)
+        m_, b_, r_ = linregress(bins, percs)[:3]
+        line = m_*bins + b_
+        p, = plt.plot(bins, line, color='k', lw=2, ls=ls)
+        hands.append(p)
+        labs.append('{0} ({1:.2})'.format(label, r_**2))
+        print('{label}: y = {m:.2}x + {b:.2}'.format(label=label, m=m_, b=b_))
+    line2 = 1.9*w + .29
+    p, = plt.plot(w, line2, 'r-', lw=2)
+    labs.append('Goto, 2014 Median Linear Regression (2% line)')
+    hands.append(p)
+    line3 = -.189*w**3 + .211*w**2 + 4.46*w - .00826
+    p, = plt.plot(w, line3, 'g-', lw=2)
+    labs.append('Takashimizu, 2012 Polynomial Regression')
+    hands.append(p)
+
     ax.set_xscale('log')
-    plt.text(.98, .98, r'$\mathdefault{R^2 =}$ '+str(r2), fontsize=14, 
-             transform=ax.transAxes, ha='right', va='top')
+    ax.set_ylim(bottom=0, top=100)
+#    plt.text(.98, .98, r'$\mathdefault{R^2 =}$ '+str(r2), fontsize=14, 
+#             transform=ax.transAxes, ha='right', va='top')
     plt.xlabel('Flow Depth (m)')
     plt.ylabel('Deposit Thickness (cm)')
-    plt.legend(hands, labs, numpoints=1, loc=2)
+    plt.legend(hands, labs, numpoints=1, loc=2, frameon=False)
     if save_fig:
         figsaver(fig, save_fig, fig_title)
     print('******************************************************************')   
@@ -3718,6 +3831,5 @@ if __name__ == '__main__':
 #    plotall(menu, kwargs="save_fig='png'", show_figs=False)
 #    a = TsuDBGSFile('GS_Sumatra_Jantang3_T13.csv')
     flowdepth_thickness_semilog(Adict)
-    sedimentconcentration_histogram(Adict)
     plt.show()
-#    sublocation_plotter(Adict, 'Pulau Breuh')
+#    sublocation_plotter(Adict, 'Sendai')
