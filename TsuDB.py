@@ -38,7 +38,8 @@ import xlrd
 import numpy as np
 import matplotlib as mpl
 from scipy.stats import linregress, nanmean, gmean
-from scipy import nanmax, nanmin, nanargmax  
+from scipy import nanmax, nanmin, nanargmax
+from scipy.optimize import curve_fit
 from matplotlib import cm, pyplot as plt
 
 from GS_tools.gsfile import GSFile
@@ -1526,7 +1527,7 @@ def flowdepth_thickness_semilog(Adict, save_fig=False,
                 labs.append(e)
                 hands.append(p)
     p, = plt.plot(w, line1, 'b-', lw=2)
-    print('Linear Regression: y = {m:.2}x + {b:.2}'.format(m=m, b=b))
+    print('Linear Regression: y = {m:.2}*x + {b:.2}'.format(m=m, b=b))
     labs.append('Linear Regression ({})'.format(r2))
     hands.append(p)
     for ls, perc in [('--', 10), ('-', 50), ('-.', 90)]:
@@ -1538,7 +1539,7 @@ def flowdepth_thickness_semilog(Adict, save_fig=False,
         p, = plt.plot(bins, line, color='k', lw=2, ls=ls)
         hands.append(p)
         labs.append('{0} ({1:.2})'.format(label, r_**2))
-        print('{label}: y = {m:.2}x + {b:.2}'.format(label=label, m=m_, b=b_))
+        print('{label}: y = {m:.2}*x + {b:.2}'.format(label=label, m=m_, b=b_))
     line2 = 1.9*w + .29
     p, = plt.plot(w, line2, 'r-', lw=2)
     labs.append('Goto, 2014 Median Linear Regression (2% line)')
@@ -1547,7 +1548,14 @@ def flowdepth_thickness_semilog(Adict, save_fig=False,
     p, = plt.plot(w, line3, 'g-', lw=2)
     labs.append('Takashimizu, 2012 Polynomial Regression')
     hands.append(p)
-
+    def func(x, a, b):
+        return a * x**(3/2) + b
+    popt, pcov = curve_fit(func, FLDint, THKint)
+    line4 = func(w, *popt)
+    p, = plt.plot(w, line4, 'm-', lw=2)
+    hands.append(p)
+    labs.append('Exponential Curve Fit')
+    print('Exponential Curve: y = {0:.2}*x^(3/2) + {1:.2}'.format(*popt))
     ax.set_xscale('log')
     ax.set_ylim(bottom=0, top=100)
 #    plt.text(.98, .98, r'$\mathdefault{R^2 =}$ '+str(r2), fontsize=14, 
