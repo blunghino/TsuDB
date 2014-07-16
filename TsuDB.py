@@ -254,6 +254,7 @@ def xls2csv(file, save_as, n_sheets_to_skip=4):
     file is the full path to the .xls or .xlsx file
     save_as is the filename to save the .csv file to
     """
+    warnings.warn('Use TsuDB.xls2dic', DeprecationWarning)
     dir1 = os.getcwd()
     os.chdir(os.path.split(file)[0])
     book = xlrd.open_workbook(file)
@@ -292,6 +293,7 @@ def csv2dic(filename=''):
     create a dictionary from csv file of TsuDB
     value checking afer dictionary is created
     """
+    warnings.warn('Use TsuDB.xls2dic', DeprecationWarning)
     dic = initialize_Adict()
     ## get filename for .csv file
     if not filename or not os.path.isfile(filename):
@@ -1060,28 +1062,32 @@ def figsaver(fig, save_fig, fig_title='untitled', overwrite=False, dpi=450,
     print('Saved figure "' + fig_title + '" as ' + path)
     
 ###############################################################################
-def average_in_percentiles(x, y, block=.1):
+def average_in_bins(x, y, block=10, percents=True):
     """
-    average `y` over every `block` fraction of `x`
-    `block` must be the result of 1 divided by any positive integer.
-    returns two numpy arrays of equal length, `block` size fractions of 1 and 
-    average values of `y` over the fractions
+    average `y` over every `block` percent of `x`
+    `block` must be the result of 100 evenly divided by any positive integer.
+    returns two numpy arrays of equal length, the mid points of `block` spaced
+    bins of `x` 
+    and average values of `y` over the blocks
     """
-    ind = np.argsort(x)
-    x = x[ind]
-    y = y[ind]
-    xp = x / nanmax(x)
-    fractions = np.arange(0, 1, block)
-    yp = np.zeros_like(fractions)
-    for ii, p in enumerate(fractions):
-        f1 = xp >= p
-        if p + block == 1:
-            f2 = xp <= p + block
+    min_x = nanmin(x)
+    max_x = nanmax(x)
+    if not percents:
+        xp = np.arange(np.floor(min_x), np.ceil(max_x), block)
+    else:
+        xp = np.asarray([max_x * p / 100 for p in np.arange(0., 100., block)])
+        block = xp[1] - xp[0]
+    yp = np.zeros_like(xp)
+    for ii, p in enumerate(xp):
+        if ii == 0:
+            f1 = x >= p
         else:
-            f2 = xp < p + block
+            f1 = x > p
+        f2 = x <= p + block
         filtr = f1 * f2
         yp[ii] = nanmean(y[filtr])
-    return fractions, yp
+    xp = xp + (block/2)
+    return xp, yp
 
 ###############################################################################
 def percentile_by_bin(bin_data, perc_data, percentile=50, bin_size=1):
@@ -1485,7 +1491,7 @@ def sedimentconcentration_distance(Adict, save_fig=False,
     return fig  
     
 ###############################################################################
-def flowdepth_thickness_semilog(Adict, save_fig=False, 
+def flowdepth_thickness_semilog(Adict, save_fig=False, japan_only=False,
                                 fig_title='Flow Depth vs Thickness Semi Log'):
     """
     plot data from Adict- flow depth vs thickness on a semilog plot
@@ -1509,10 +1515,15 @@ def flowdepth_thickness_semilog(Adict, save_fig=False,
     THKint, FLDint, _, tnumint = interp_flowdepth_to_thickness(THK, FLD)
     FLDint = np.asarray(FLDint)
     THKint = np.asarray(THKint)
-    m, b, r = linregress(FLDint, THKint)[:3]
-    r2 = round(r**2, 2)
+    tnumint = np.asarray(tnumint)
+    if japan_only:
+        japan_sloc = nanmin([k for (k, v) in Adict['SLKey'].items() if v == 'Sendai'])
+        japan_tnum = nanmin(FLD.tnum[FLD.sw == japan_sloc])
+        filtr = tnumint == japan_tnum
+        THKint = THKint[filtr]
+        FLDint = FLDint[filtr]
+        tnumint = tnumint[filtr]
     w = np.sort(FLDint)
-    line1 = m*w + b
     labs, hands = [], []
     FLD_tnum = list(FLD.tnum)
     sloc = [FLD.sw[FLD_tnum.index(t)] for t in tnumint]
@@ -1526,10 +1537,25 @@ def flowdepth_thickness_semilog(Adict, save_fig=False,
             if e not in labs:
                 labs.append(e)
                 hands.append(p)
+    ## linear regression on all data
+    m, b, r = linregress(FLDint, THKint)[:3]
+    r2 = round(r**2, 2)
+    line1 = m*w + b
     p, = plt.plot(w, line1, 'b-', lw=2)
     print('Linear Regression: y = {m:.2}*x + {b:.2}'.format(m=m, b=b))
     labs.append('Linear Regression ({})'.format(r2))
     hands.append(p)
+    ## function to use with scipy.optimize.curve_fit
+    def func(x, a, b):
+        return a * x**(3/2) + b 
+    ## exponential curve fit (x^(3/2))
+    popt, pcov = curve_fit(func, FLDint, THKint)
+    line4 = func(w, *popt)
+    p, = plt.plot(w, line4, 'm-', lw=2)
+    hands.append(p)
+    labs.append('Exponential Curve Fit')
+    print('Exponential Curve: y = {0:.2}*x^(3/2) + {1:.2}'.format(*popt))
+    ## percentile curve fits
     for ls, perc in [('--', 10), ('-', 50), ('-.', 90)]:
         label = '{}th Percentile Linear Regression'.format(perc)
         bins, percs = percentile_by_bin(FLDint, THKint, percentile=perc, 
@@ -1540,24 +1566,19 @@ def flowdepth_thickness_semilog(Adict, save_fig=False,
         hands.append(p)
         labs.append('{0} ({1:.2})'.format(label, r_**2))
         print('{label}: y = {m:.2}*x + {b:.2}'.format(label=label, m=m_, b=b_))
+    ## Goto, 2014 relationship
     line2 = 1.9*w + .29
     p, = plt.plot(w, line2, 'r-', lw=2)
     labs.append('Goto, 2014 Median Linear Regression (2% line)')
     hands.append(p)
+    ## Takashimizu, 2012 relationship
     line3 = -.189*w**3 + .211*w**2 + 4.46*w - .00826
     p, = plt.plot(w, line3, 'g-', lw=2)
     labs.append('Takashimizu, 2012 Polynomial Regression')
     hands.append(p)
-    def func(x, a, b):
-        return a * x**(3/2) + b
-    popt, pcov = curve_fit(func, FLDint, THKint)
-    line4 = func(w, *popt)
-    p, = plt.plot(w, line4, 'm-', lw=2)
-    hands.append(p)
-    labs.append('Exponential Curve Fit')
-    print('Exponential Curve: y = {0:.2}*x^(3/2) + {1:.2}'.format(*popt))
+    ## format axes
     ax.set_xscale('log')
-    ax.set_ylim(bottom=0, top=100)
+    ax.set_ylim(bottom=0, top=100) 
 #    plt.text(.98, .98, r'$\mathdefault{R^2 =}$ '+str(r2), fontsize=14, 
 #             transform=ax.transAxes, ha='right', va='top')
     plt.xlabel('Flow Depth (m)')
@@ -1569,9 +1590,10 @@ def flowdepth_thickness_semilog(Adict, save_fig=False,
     return fig
     
 ###############################################################################
-def flowdepth_thickness(Adict, save_fig=False, poly_fit=None,
+def flowdepth_thickness(Adict, save_fig=False, poly_fit=None, exclude=None, 
                           fig_title='Flow Depth vs Thickness', 
-                          annotate=False, agu_print=True, exclude=None):
+                          annotate=False, agu_print=True, 
+                          block_average=None):
     """
     plot data from Adict- flow depth vs thickness
     dependent on global variable Adict containing TDB data keyed by attribute
@@ -1609,7 +1631,8 @@ def flowdepth_thickness(Adict, save_fig=False, poly_fit=None,
         ax = plt.subplot(111)
         for e in set(event):
             if e:
-                p, = plt.plot(FLDint[event == e], THKint[event == e], emap[e], ms=12)
+                p, = plt.plot(FLDint[event == e], THKint[event == e], emap[e], 
+                              ms=12)
                 if e not in labs:
                     labs.append(e)
                     hands.append(p)
@@ -1618,11 +1641,31 @@ def flowdepth_thickness(Adict, save_fig=False, poly_fit=None,
             plt.text(.98, .98, r'$\mathdefault{R^2 =}$ '+str(r2_), fontsize=14, 
                  transform=ax.transAxes, ha='right', va='top')
         else:
+            ## TODO make this go to the 3/2 power with curve_fit (see *semilog)
             ind = np.argsort(FLDint)
             P = np.polyfit(FLDint[ind], THKint[ind], poly_fit)
             F = np.poly1d(P)
             xp = np.linspace(FLDint.min(), FLDint.max(), 500)
             plt.plot(xp, F(xp), 'k-')
+        if block_average is not None:
+            japan_sloc = nanmin([k for (k, v) in Adict['SLKey'].items() if v == 'Sendai'])
+            f1 = sloc == japan_sloc
+            f2 = sloc != japan_sloc
+            ## calculate average for each block_average sized block
+            japan_bin_fld, japan_av_thk = average_in_bins(FLDint[f1], 
+                                                          THKint[f1],
+                                                          percents=False, 
+                                                          block=block_average)
+            all_bin_fld, all_av_thk = average_in_bins(FLDint[f2], 
+                                                      THKint[f2],
+                                                      percents=False,
+                                                      block=block_average)
+            p1, p2 = plt.plot(japan_bin_fld, japan_av_thk, 'c*', all_bin_fld, 
+                              all_av_thk, 'w*', ms=25, mew=2)
+            b = int(block_average)
+            hands += [p1, p2]
+            labs += ['Averages of {} m Flow Depth Bins: Japan Only'.format(b),
+                     'Averages of {} m Flow Depth Bins: All Excluding Japan'.format(b)]
         ax.tick_params(axis='both', which='major', labelsize=18)        
         hands, labs = sort_legend_labels(hands, labs)
         plt.legend(hands, labs, numpoints=1, frameon=False, loc=2)
@@ -1927,7 +1970,8 @@ def meangs_flowdepth(Adict, save_fig=False, exclude=True, lin_regress=True,
     
 ###############################################################################
 def meangs_flowdepth_thickness(Adict, save_fig=False, exclude=True, 
-                                 interpolate_flowdepth=False, sand_only=False,
+                               japan_only=False,
+                                 interpolate_flowdepth=True, sand_only=False,
                      fig_title='Flow depth vs Thickness with mean grain size'):
     """
     plot data from Adict - thickness vs flow depth showing mean grain size
@@ -1973,10 +2017,14 @@ def meangs_flowdepth_thickness(Adict, save_fig=False, exclude=True,
     else:
         thk = THK.sx
         fld = FLD.sx
-    japan_sloc = nanmin([k for (k, v) in Adict['SLKey'].items() if v == 'Sendai'])
-    t = nanmin(FLD.tnum[FLD.sw == japan_sloc])
-    p = plt.scatter(fld[FLD.tnum == t], thk[FLD.tnum == t], c=MGS.sx[FLD.tnum == t],
-                    s=50, vmin=vmin, vmax=vmax, cmap='hot_r')
+    if japan_only:
+        japan_sloc = nanmin([k for (k, v) in Adict['SLKey'].items() if v == 'Sendai'])
+        t = nanmin(FLD.tnum[FLD.sw == japan_sloc])
+        p = plt.scatter(fld[FLD.tnum == t], thk[FLD.tnum == t], c=MGS.sx[FLD.tnum == t],
+                        s=50, vmin=vmin, vmax=vmax, cmap='hot_r')
+    else:
+        p = plt.scatter(fld, thk, c=MGS.sx, s=50, vmin=vmin, vmax=vmax, 
+                        cmap='hot_r')
     plt.title(fig_title)
     plt.xlabel('Flow Depth (m)')
     plt.ylabel('Deposit Thickness (cm)')
@@ -2041,8 +2089,8 @@ def slope_flowdepth_thickness(Adict, save_fig=False,
   
 ###############################################################################
 def percentIL_thickness(Adict, save_fig=False, inset_map=False, 
-                        normalize_thickness=False, min_transect_points=1,
-                        average_fraction=.1, fig_title=\
+                        normalize_thickness=True, min_transect_points=1,
+                        average_perc=10, fig_title=\
              'Distance to shore as percent of inundation limit vs thickness'):
     """
     plot data from Adict- percent of inundation limit vs thickness
@@ -2053,7 +2101,7 @@ def percentIL_thickness(Adict, save_fig=False, inset_map=False,
     min_transect_points specifies the number of points on a transect required 
     to include a data for that transect
     
-    average_fraction specifies the fraction interval over which to average, if
+    average_perc specifies the fraction interval over which to average, if
     None, do not average
     """
     print('Running plotting routine:', fig_title)
@@ -2091,12 +2139,10 @@ def percentIL_thickness(Adict, save_fig=False, inset_map=False,
     fig = plt.figure(figsize=(15, 12))
     plt.subplot(nplots, 1, 1)
     plt.scatter(x, THK.sx[filtr])
-    if average_fraction is not None:
-        ## calculate average for each average_fraction sized block
-        fractions, av_thk = average_in_percentiles(x, THK.sx[filtr], 
-                                                   block=average_fraction)
-        ## midpoint of blocks scaled to percent                                         
-        fractions = 100*(fractions+(average_fraction/2))
+    if average_perc is not None:
+        ## calculate average for each average_perc sized block
+        fractions, av_thk = average_in_bins(x, THK.sx[filtr], 
+                                            block=average_perc)
         plt.plot(fractions, av_thk, 'r*', ms=16)
     plt.xlim([0,100])
     plt.ylim(ymin=0)
@@ -2112,12 +2158,10 @@ def percentIL_thickness(Adict, save_fig=False, inset_map=False,
     if normalize_thickness:
         plt.subplot(nplots, 1, 3)
         plt.scatter(x, thk_norm[filtr])
-        if average_fraction is not None:
-            ## calculate average for each average_fraction sized block
-            fractions, av_norm_thk = average_in_percentiles(x, thk_norm[filtr], 
-                                                       block=average_fraction)
-            ## midpoint of blocks scaled to percent                                         
-            fractions = 100*(fractions+(average_fraction/2))
+        if average_perc is not None:
+            ## calculate average for each average_perc sized block
+            fractions, av_norm_thk = average_in_bins(x, thk_norm[filtr], 
+                                                     block=average_perc)
             plt.plot(fractions, av_norm_thk, 'r*', ms=16)
         plt.xlim([0,100])
         plt.ylim([0,1])
@@ -2132,7 +2176,7 @@ def percentIL_thickness(Adict, save_fig=False, inset_map=False,
 
 ###############################################################################    
 def percentIL_flowdepth(Adict, save_fig=False, normalize_flowdepth=True,
-                        min_transect_points=1, average_fraction=.1, fig_title=\
+                        min_transect_points=1, average_perc=10, fig_title=\
             'Distance to shore as percent inundation limit vs flow depth'):
     """
     plot data from Adict- percent of inundation limit vs flow depth
@@ -2167,13 +2211,12 @@ def percentIL_flowdepth(Adict, save_fig=False, normalize_flowdepth=True,
     fig = plt.figure(figsize=(15, 12))
     plt.subplot(nplots, 1, 1)
     plt.scatter(x, FLD.sx[filtr])
-    if average_fraction is not None:
-        ## calculate average for each average_fraction sized block
-        fractions, av_fld = average_in_percentiles(x, FLD.sx[filtr], 
-                                                   block=average_fraction)
+    if average_perc is not None:
+        ## calculate average for each average_perc sized block
+        percs, av_fld = average_in_bins(x, FLD.sx[filtr], block=average_perc)
         ## midpoint of blocks scaled to percent                                         
-        fractions = 100*(fractions+(average_fraction/2))
-        plt.plot(fractions, av_fld, 'r*', ms=16)
+        percs = percs+(average_perc/2)
+        plt.plot(percs, av_fld, 'r*', ms=16)
     plt.xlim([0,100])
     plt.ylim(ymin=0)
     plt.title(fig_title)
@@ -2188,13 +2231,13 @@ def percentIL_flowdepth(Adict, save_fig=False, normalize_flowdepth=True,
     if normalize_flowdepth:
         plt.subplot(nplots, 1, 3)
         plt.scatter(x, fld_norm[filtr])
-        if average_fraction is not None:
-            ## calculate average for each average_fraction sized block
-            fractions, av_norm_fld = average_in_percentiles(x, fld_norm[filtr], 
-                                                       block=average_fraction)
+        if average_perc is not None:
+            ## calculate average for each average_perc sized block
+            percs, av_norm_fld = average_in_bins(x, fld_norm[filtr], 
+                                                 block=average_perc)
             ## midpoint of blocks scaled to percent                                         
-            fractions = 100*(fractions+(average_fraction/2))
-            plt.plot(fractions, av_norm_fld, 'r*', ms=16)
+            percs = percs+(average_perc/2)
+            plt.plot(percs, av_norm_fld, 'r*', ms=16)
         plt.xlim([0,100])
         plt.ylim([0,1])
         plt.xlabel('Distance from shore (% of inundation limit)')
@@ -3841,6 +3884,7 @@ if __name__ == '__main__':
     ##--Enter commands--##
 #    plotall(menu, kwargs="save_fig='png'", show_figs=False)
 #    a = TsuDBGSFile('GS_Sumatra_Jantang3_T13.csv')
-    flowdepth_thickness_semilog(Adict)
+    percentIL_thickness(Adict)
+    flowdepth_thickness(Adict, agu_print=True, block_average=1)
     plt.show()
 #    sublocation_plotter(Adict, 'Sendai')
