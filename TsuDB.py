@@ -936,7 +936,7 @@ def get_values_on_transect_with_tuple(transect_tuple, Adict, *keys):
     return outs
     
 ###############################################################################
-def get_gsmeans(Adict, gs_min_max=None):
+def get_gsmeans(Adict, return_std_instead=False, gs_min_max=None):
     """
     reads in ALL GSFiles and returns an array of bulk means for each trench
     
@@ -948,7 +948,10 @@ def get_gsmeans(Adict, gs_min_max=None):
     for ii, gs in enumerate(Adict['GSFileUniform']):
         if gs:
             try:
-                gsmeans[ii] = TsuDBGSFile(gs).bulk_mean(gs_min_max=gs_min_max)
+                if return_std_instead:
+                    gsmeans[ii] = TsuDBGSFile(gs).bulk_std(gs_min_max=gs_min_max)
+                else:
+                    gsmeans[ii] = TsuDBGSFile(gs).bulk_mean(gs_min_max=gs_min_max)
             except FileNotFoundError or ValueError as e:
                 print(e)
                 print('TsuDB.get_gsmeans: Error at', gs)
@@ -1843,10 +1846,13 @@ def flowdepth_maxsuspensiongradedlayerthickness(Adict, save_fig=False,
     
 ###############################################################################
 def meangs_thickness(Adict, save_fig=False, exclude=True, sand_only=False,
+                     plot_std_instead=False,
                      fig_title='Mean grain size vs Thickness'):
     """
     plot data from Adict - mean grain size vs thickness
     """
+    if plot_std_instead and fig_title:
+        fig_title = 'Standard Deviation in Grain Size vs Thickness'
     print('Running plotting routine:', fig_title)
     if exclude is True:
         exclude = Adict['incomplete_transect']
@@ -1855,7 +1861,8 @@ def meangs_thickness(Adict, save_fig=False, exclude=True, sand_only=False,
         gs_min_max = (4, -1)
     else:
         gs_min_max = None
-    gsmeans = get_gsmeans(Adict, gs_min_max=gs_min_max)
+    gsmeans = get_gsmeans(Adict, gs_min_max=gs_min_max, 
+                          return_std_instead=plot_std_instead)
     out = denan(Adict["SLCode"], 
                 Adict["Transect"], 
                 Adict["Distance2shore"], 
@@ -1884,7 +1891,10 @@ def meangs_thickness(Adict, save_fig=False, exclude=True, sand_only=False,
             labels.append(e)
     plt.ylim(bottom=0)
     plt.ylabel('Thickness (cm)')
-    plt.xlabel(r'Mean Grain Size ($\mathsf{\phi}$)')
+    if plot_std_instead:
+        plt.xlabel(r'Standard Deviation in Grain Size ($\mathsf{\phi}$)')
+    else:
+        plt.xlabel(r'Mean Grain Size ($\mathsf{\phi}$)')
     plt.title(fig_title)
     if sand_only:
         plt.xlim(gs_min_max)
@@ -1899,11 +1909,19 @@ def meangs_thickness(Adict, save_fig=False, exclude=True, sand_only=False,
     
 ###############################################################################
 def meangs_flowdepth(Adict, save_fig=False, exclude=True, lin_regress=True,
-                     interpolate_flowdepth=True, sand_only=False, 
+                     interpolate_flowdepth=True, sand_only=False,
+                     plot_std_instead=False,
                      fig_title='Flow depth vs mean grain size'):
     """
     plot data from Adict - thickness vs flow depth showing mean grain size
+    
+    set plot_std_instead to True to change the figure to plot standard 
+    deviation in grain size rather than mean grain size.
+    
+    set sand_only to True to plot only data from the sand fraction
     """
+    if plot_std_instead and fig_title:
+        fig_title = 'Flow Depth vs Standard Deviation in Grain Size'
     print('Running plotting routine:', fig_title)
     if exclude is True:
         exclude = Adict['incomplete_transect']
@@ -1912,7 +1930,8 @@ def meangs_flowdepth(Adict, save_fig=False, exclude=True, lin_regress=True,
         gs_min_max = (4, -1)
     else:
         gs_min_max = None
-    gsmeans = get_gsmeans(Adict, gs_min_max=gs_min_max)
+    gsmeans = get_gsmeans(Adict, return_std_instead=plot_std_instead,
+                          gs_min_max=gs_min_max)
     out = denan(Adict["SLCode"], 
                 Adict["Transect"], 
                 Adict["Distance2shore"], 
@@ -1947,7 +1966,10 @@ def meangs_flowdepth(Adict, save_fig=False, exclude=True, lin_regress=True,
             labels.append(e)
     plt.title(fig_title)
     plt.xlabel('Flow Depth (m)')
-    plt.ylabel(r'Mean Grain Size ($\mathsf{\phi}$)')
+    if plot_std_instead:
+        plt.ylabel(r'Standard Deviation in Grain Size ($\mathsf{\phi}$)')
+    else:
+        plt.ylabel(r'Mean Grain Size ($\mathsf{\phi}$)')
     plt.xlim(xmin=0)
     if sand_only:
         plt.ylim(gs_min_max)
@@ -1970,12 +1992,14 @@ def meangs_flowdepth(Adict, save_fig=False, exclude=True, lin_regress=True,
     
 ###############################################################################
 def meangs_flowdepth_thickness(Adict, save_fig=False, exclude=True, 
-                               japan_only=False,
+                               japan_only=False, plot_std_instead=False,
                                  interpolate_flowdepth=True, sand_only=False,
                      fig_title='Flow depth vs Thickness with mean grain size'):
     """
     plot data from Adict - thickness vs flow depth showing mean grain size
     """
+    if plot_std_instead and fig_title:
+        fig_title = 'Flow Depth vs Thickness with Standard Deviation in Grain Size'
     print('Running plotting routine:', fig_title)
     if exclude is True:
         exclude = Adict['incomplete_transect']
@@ -1984,7 +2008,8 @@ def meangs_flowdepth_thickness(Adict, save_fig=False, exclude=True,
         gs_min_max = (4, -1)
     else:
         gs_min_max = None
-    gsmeans = get_gsmeans(Adict, gs_min_max=gs_min_max)
+    gsmeans = get_gsmeans(Adict, gs_min_max=gs_min_max, 
+                          return_std_instead=plot_std_instead)
     out = denan(Adict["SLCode"], 
                 Adict["Transect"], 
                 Adict["Distance2shore"], 
@@ -2031,7 +2056,10 @@ def meangs_flowdepth_thickness(Adict, save_fig=False, exclude=True,
     plt.xlim(xmin=0)
     plt.ylim(ymin=0)
     cbar = plt.colorbar(orientation='horizontal', shrink=.7, extend=extend)
-    cbar.set_label(r'Mean Grain Size ($\mathsf{\phi}$)')
+    if plot_std_instead:
+        cbar.set_label(r'Standard Deviation in Grain Size ($\mathsf{\phi}$)')
+    else:
+        cbar.set_label(r'Mean Grain Size ($\mathsf{\phi}$)')
     if save_fig:
         figsaver(fig, save_fig, fig_title)    
     print('******************************************************************')
@@ -3634,11 +3662,15 @@ def sublocation_plotter(Adict, *args, exclude=None):
                                                             'Distance2shore'
                                                             )
             gsmeans = np.asarray([np.nan for _ in gsfilenames])
+            gsstds = gsmeans.copy()
             for ii, gs in enumerate(gsfilenames):
                 if gs:
                     try:
+                        ## create TsuDBGSFile object
                         gsfile = TsuDBGSFile(gs)
+                        ## get mean and std using TsuDBGSFile methods
                         gsmeans[ii] = gsfile.bulk_mean()
+                        gsstds[ii] = gsfile.bulk_std()
                     ## FileNotFoundError or TypeError
                     except FileNotFoundError as fnfe:
                         print('%s - %s. Error reading GSFile. %s' 
@@ -3677,12 +3709,17 @@ def sublocation_plotter(Adict, *args, exclude=None):
             plt.plot(x, y, 'g--', x, y, 'k.')
             plt.ylabel('Elevation (m, '+datum+')', fontsize=12)
             plt.sca(ax[3])
-            x, y = denan(gsdts, gsmeans)
+            x, y = denan(gsdts.copy(), gsmeans)
+            x2, y2 = denan(gsdts.copy(), gsstds)
             ind = np.argsort(x)
             x, y = x[ind], y[ind]
-            plt.plot(x, y, 'm--', x, y, 'k.')
+            _, p = plt.plot(x, y, 'm--', x, y, 'k.')
+            _, p2 = plt.plot(x2, y2, 'y--', x2, y2, 'kx')
+            plt.legend([p, p2], ['Mean', 'Standard Deviation'], numpoints=1, 
+                       fontsize=10, frameon=False, loc=4)
             ax[3].invert_yaxis()
-            plt.ylabel(r'Mean grain size ($\mathsf{\phi}$)', fontsize=12)
+            plt.ylabel('Mean and Standard Deviation \n of Grain Size ' +\
+                       r'($\mathsf{\phi}$)' + '\n\n', fontsize=12, ha='center')
             plt.xlabel('Distance to Shore (m)', fontsize=18)
             plt.xlim(left=THK.sds[filtr][0], right=THK.sds[filtr][-1])
     
@@ -3884,7 +3921,4 @@ if __name__ == '__main__':
     ##--Enter commands--##
 #    plotall(menu, kwargs="save_fig='png'", show_figs=False)
 #    a = TsuDBGSFile('GS_Sumatra_Jantang3_T13.csv')
-    percentIL_thickness(Adict)
-    flowdepth_thickness(Adict, agu_print=True, block_average=1)
-    plt.show()
-#    sublocation_plotter(Adict, 'Sendai')
+    sublocation_plotter(Adict, 'Sendai')
