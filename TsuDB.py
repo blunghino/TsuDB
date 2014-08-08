@@ -240,10 +240,44 @@ def initialize_Adict():
                            ('Ibral Nagar Nalaveli', 5), ('Singkel', 1),
                            ('Pulau Asu', 1), ('Salaut', 3), ('Babi', 1),
                            ('Lagundri Bay', 1), ('Pulut', 1), ('Tuangku', 2)]
+    ## list of high resolution grain size data (sampling interval <= 1 cm)
+    high_res_gs = [
+        'GS_Japan_Sendai_T3-6.csv', 
+        'GS_Japan_Sendai_T3-8.csv', 
+        'GS_Japan_Sendai_T3-10.csv', 
+        'GS_Japan_Sendai_T3-11.csv', 
+        'GS_Japan_Sendai_T3-16.csv', 
+        'GS_Japan_Sendai_T3-23.csv', 
+        'GS_Japan_Sendai_T3-27.csv', 
+        'GS_Chile_Coliumo_Trench3.csv', 
+        'GS_Chile_Coliumo_Trench7.csv',
+        'GS_PapuaNewGuinea_Arop_Hole7.csv',
+        'GS_PapuaNewGuinea_SissanoVillage_327mML.csv',
+        'GS_Peru_Amecosupe_trenchH13-20.csv',
+        'GS_Sumatra_Babi_SUM15.csv',
+        'GS_Sumatra_Busung1_T2_1.csv',
+        'GS_Sumatra_Busung1_T2_2.csv',
+        'GS_Sumatra_Jantang3_T13.csv',
+        'GS_Sumatra_Jantang3_T3.csv',
+        'GS_Sumatra_Jantang3_T4.csv',
+        'GS_Sumatra_Jantang3_T5.csv',
+        'GS_Sumatra_Jantang3_T6.csv',
+        'GS_Sumatra_Jantang3_T7.csv',        
+        'GS_Sumatra_Jantang3_T8.csv',
+        'GS_Sumatra_LagundriBay_SUM2.csv',
+        'GS_Sumatra_LagundriBay_SUM6.csv',
+        'GS_Sumatra_LhokKruet_SUM21.csv',
+        'GS_Sumatra_LangiIsland_SUM33.csv',
+        'GS_Sumatra_Tuangku_SUM13.csv',
+        'GS_Sumatra_Salaut_SUM18.csv',
+        'GS_WesternSamoa_Satitoa_T13.csv', 
+        'GS_WesternSamoa_Satitoa_T19.csv', 
+    ]
     ## initialize master dictionary
     dic = {'floats': floats, 'event_lookup': event_lookup, 'emap': emap, 
            'incomplete_transect': incomplete_transect, 'mw_lookup': mw_lookup,
-           'typegs_lookup': typegs_lookup, 'datum_lookup': datum_lookup}
+           'typegs_lookup': typegs_lookup, 'datum_lookup': datum_lookup,
+           'high_res_gs': high_res_gs}
     return dic
         
 ###############################################################################
@@ -966,7 +1000,7 @@ def get_maxsuspensiongradedlayerthickness(Adict):
     """
     sglt = np.ones_like(Adict['Thickness']) * np.nan
     for ii, filename in enumerate(Adict['GSFileUniform']):
-        if filename:
+        if filename and filename in Adict['high_res_gs']:
             try:
                 ## create a TsuDBGSFile object for each grain size data file
                 gs = TsuDBGSFile(filename)
@@ -975,18 +1009,8 @@ def get_maxsuspensiongradedlayerthickness(Adict):
                 print('TsuDB.get_maxsuspensiongradedlayerthickness: Error at',
                       gs)
                 continue
-            temp = []
-            ## filter out layers that are not classified as suspension graded
-            f1 = gs.layer_type == 1
-            for x in sorted(set(gs.layer[f1])):
-                ## for each suspension graded layer, calculate the thickness 
-                ## by subtracting the minimum and maximum depth
-                f2 = gs.layer == x
-                f3 = f1 * f2
-                mn = min(gs.min_depth[f3])
-                mx = max(gs.max_depth[f3])
-                temp.append(mx-mn)
-            if temp:
+            temp = gs.thickness_of_layers_in_layer_type(layer_type=1)
+            if temp is not None:
                 sglt[ii] = max(temp)
     return sglt
     
@@ -1107,7 +1131,7 @@ def percentile_by_bin(bin_data, perc_data, percentile=50, bin_size=1):
             f1 = bin_data >= b
         else:
             f1 = bin_data > b
-        f2 = bin_data <= b+bin_size
+        f2 = bin_data <= b + bin_size
         try:
             percs[ii] = np.percentile(perc_data[f1 * f2], percentile)
         except ValueError:
@@ -3860,7 +3884,7 @@ class TsuDBGSFile(GSFile):
 ###############################################################################
 def main(
         xls_file_name='TsunamiSediments_AllData_BL_March2014_r6.xlsx', 
-        dict_filename = "TsuDB_Adict_2014-07-07.pkl",
+        dict_file_name = "TsuDB_Adict_2014-08-06.pkl",
         from_xls=True,
         save_dict=False,
         saveas_dict=True,
@@ -3882,11 +3906,11 @@ def main(
         Adict = xls2dic(xls_file_path)
         print('TsuDB data read in from xls file "%s"\n' % xls_file_name)
     if save_dict and from_xls:
-        dict_filename = savedict(Adict, askfilename=saveas_dict)
-        print('TsuDB data dictionary saved as "%s"\n' % dict_filename)
+        dict_file_name = savedict(Adict, askfilename=saveas_dict)
+        print('TsuDB data dictionary saved as "%s"\n' % dict_file_name)
     if not from_xls:
-        Adict = opendict(dict_filename)
-        print('TsuDB data dictionary opened from "%s"\n' % dict_filename) 
+        Adict = opendict(dict_file_name)
+        print('TsuDB data dictionary opened from "%s"\n' % dict_file_name) 
 
     Adict['TDB_DIR'] = TDB_DIR
 
@@ -3894,7 +3918,7 @@ def main(
 
 ############################################################################### 
 if __name__ == '__main__':
-    Adict = main(from_xls=False)
+    Adict = main(from_xls=True, save_dict=True)
         
     ##--Plotting routines menu--##
     menu = {
@@ -3921,4 +3945,7 @@ if __name__ == '__main__':
     ##--Enter commands--##
 #    plotall(menu, kwargs="save_fig='png'", show_figs=False)
 #    a = TsuDBGSFile('GS_Sumatra_Jantang3_T13.csv')
-    sublocation_plotter(Adict, 'Sendai')
+#    plotall({k: v for k, v in menu.items() if k > 17})
+    flowdepth_maxsuspensiongradedlayerthickness(Adict)
+    plt.show()
+#    sublocation_plotter(Adict, 'Sendai')
