@@ -34,6 +34,7 @@ import csv
 import pickle
 import warnings
 import datetime as dt
+from pprint import pprint
 from tkinter import filedialog
 
 import xlrd
@@ -271,7 +272,7 @@ def initialize_Adict():
         'GS_Sumatra_Jantang3_T8.csv',
         'GS_Sumatra_LagundriBay_SUM2.csv',
         'GS_Sumatra_LagundriBay_SUM6.csv',
-        'GS_Sumatra_LhokKruet_SUM21.csv',
+        'GS_Sumatra_Lhokkruet_SUM21.csv',
         'GS_Sumatra_LangiIsland_SUM33.csv',
         'GS_Sumatra_Tuangku_SUM13.csv',
         'GS_Sumatra_Salaut_SUM18.csv',
@@ -1023,6 +1024,48 @@ def get_maxsuspensiongradedlayerthickness(Adict):
             if temp is not None:
                 sglt[ii] = max(temp)
     return sglt
+    
+###############################################################################
+def get_flowdepth_for_GS_file(csv_file_name, Adict, verbose=True):
+    """
+    use a list of csv file names to get a list of projected flow depths for the
+    associated trenches
+    """
+    ## initialize list
+    pfd = [None for x in csv_file_name]
+    ## find indices for all gs files
+    unique = get_B_from_A(csv_file_name, Adict, 'GSFileUniform', 'unique')
+    ## transect sort and interpolate flow depths
+    out = denan(Adict["SLCode"], 
+                Adict["Transect"], 
+                Adict["Distance2shore"], 
+                Adict["unique"], 
+                Adict["ProjectedFlowDepth"], 
+                n_rounds=3
+                )
+    SLC = out[0]
+    TSC = out[1]
+    DTS = out[2]
+    UNI = Transect(out[3], SLC, TSC, DTS)    
+    FLD = Transect(out[4], SLC, TSC, DTS)
+    UNIint, FLDint, DTSint, tnumint = interp_flowdepth_to_thickness(UNI, FLD)
+    FLDint = np.asarray(FLDint)
+    UNIint = np.asarray(UNIint)
+    ## look at flow depth value for each trench
+    for ii, ind in enumerate(unique):
+        ## file not in database
+        if ind == '':
+            if verbose:
+                print('File not found: {}'.format(csv_file_name[ii]))
+        else:
+            try:
+                pfd[ii] = FLDint[UNIint == ind][0]
+            except IndexError:
+                pfd[ii] = np.nan
+    if verbose:
+        pprint([(c, p) for c, p in zip(csv_file_name, pfd)])
+    
+    return pfd
     
 ###############################################################################
 def lookup_SLCode(string, slKey):
@@ -4055,3 +4098,4 @@ if __name__ == '__main__':
 #    volume_flowdepth(Adict)
 #    plt.show()
 #    sublocation_plotter(Adict, 'Jantang')
+    pfd = get_flowdepth_for_GS_file(Adict['high_res_gs'], Adict)
