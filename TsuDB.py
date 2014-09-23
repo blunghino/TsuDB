@@ -13,6 +13,7 @@ TsuDB.py series created on Wed Jul 17 11:15:25 2013
     (starting at 302)
 300 series replaces csv reader to read into dictionary straight from .xlsx 
     database (starting at 303)
+Starting at version 307, all changes tracked with git
     
 to test all functionality:
     at the command prompt in the py directory under the main project directory
@@ -20,6 +21,7 @@ to test all functionality:
     
 use requirements.txt to install all third party requirements with pip:
     pip install -r requirements.txt
+    
 also requires GS_tools module to be added to PYTHONPATH
 GS_tools module available at https://github.com/blunghino/GS_tools
 
@@ -182,6 +184,9 @@ def initialize_Adict():
     """
     create a dictionary and populate it with TsuDB data not stored in
     the database
+    
+    this is where to add metadata or other information that should be
+    universally accessible to the database
     """
     ## attributes to be converted from strings to floats when they are read in
     floats = ('ElevationDatum', 'ElevationBy', 'ObservationType', 'Transect',
@@ -283,6 +288,8 @@ def initialize_Adict():
 ###############################################################################
 def xls2csv(file, save_as, n_sheets_to_skip=4):
     """
+    deprecated use xls2dic    
+    
     reads the TsuDB from excel form into a csv file
         
     file is the full path to the .xls or .xlsx file
@@ -481,7 +488,9 @@ def opendict(filename):
 ###############################################################################
 class Transect:
     """
+    Sort data within each transect by distance to shore
     Set transect specific properties for observations that fall on a transect.
+    
     
     To initialize a Transect object requires a minimum of 3 vectors of equal
     length:
@@ -489,7 +498,8 @@ class Transect:
         SLC is the code specifying the sublocations (no NaNs allowed)
         TSC is the transect number (no NaNs allowed)
         *DTS is the distance to shore (optional, no NaNs allowed)
-        
+    
+    available attributes:
     .x is the attribute passed to Transect in its original order
     .w is the sublocation in its original order
     .t is the transect number in its original order
@@ -497,11 +507,11 @@ class Transect:
     .ds is the distance to shore in its original order
     .ind is the indices required to sort within each transect by increasing 
     distance to shore
-    .sx, .sw, .st, .sds are the attributes described above sorted by .ind
+    .sx, .sw, .st, .sds are .x, .w, .t, .ds sorted by .ind
     .smx is the max value of .sx along each transect, in sorted order
     .smxt is the max value of .sx along each transect, all other values are nan
     .dx is the difference between two adjacent values of .sx along a transect
-    where the last value of .dx on a transect is NaN (onshore flow)
+    where the last value of .dx on a transect is NaN (if return_flow=False)
     .middx is the average of two adjacent .sx values on a transect
     .dds is the difference between two adjacent values of .sds along a transect
     .midds is the midpoint between .sds values along a transect
@@ -3415,7 +3425,102 @@ def flowdepth_nextflowdepth(Adict, save_fig=False,
         figsaver(fig, save_fig, fig_title)
     print('******************************************************************')
     return fig
+
+###############################################################################
+def topo_averaged_thickness_flowdepth(Adict, save_fig=False,
+                            fig_title='Topography, Thickness, and Flow Depth'):
+    """
+    Regarding your analysis, have you tried some averaging of deposit
+    characteristics (thickness) in the cross shore direction to average 
+    across local topography and then compare that to flow depth? - GG
+    """
+    print('Running plotting routine:', fig_title)
+    out = denan(Adict["SLCode"], 
+                Adict["Transect"], 
+                Adict["Distance2shore"], 
+                Adict["Thickness"], 
+                Adict["MaxThickness"], 
+                Adict["ProjectedFlowDepth"],
+                Adict["Elevation"],
+                Adict["Modern"], 
+                n_rounds=3
+                )
+    out = runfilters(out, 1)
+    SLC = out[0]
+    TSC = out[1]
+    DTS = out[2]
+    THK = Transect((out[3]+out[4])/2., SLC, TSC, DTS)    
+    FLD = Transect(out[5], SLC, TSC, DTS)
+    ELV = Transect(out[6], SLC, TSC, DTS)
+    THKint, FLDint, DTSint, tnumint = interp_flowdepth_to_thickness(THK, FLD)
+    FLDint = np.asarray(FLDint)
+    THKint = np.asarray(THKint)
+    DTSint = np.asarray(DTSint)
+    km_sloc = nanmin([k for (k, v) in Adict['SLKey'].items() if v == 'Kuala Merisi'])
+    f = ELV.tnum == nanmin(ELV.tnum[ELV.sw == km_sloc])
+    m = ELV.dx / ELV.dds
+    ## get sign on all slope points
+    m_sign = np.zeros_like(m[f])
+    for ii, s in enumerate(m[f]):
+        if np.isnan(s):
+            m_sign[ii] = np.nan
+        elif s < 0:
+            m_sign[ii] = -1
+        else:
+            m_sign[ii] = 1
+    inflection = np.abs(np.diff(m_sign))
+    dts = ELV.sds[f]
+    print(ELV.sx[f][13:23])
+    print(dts[13:23])
+    print(m[f][13:23])
+    print(m_sign[13:23])
+    print(inflection[13:23])
     
+    fig, ax1 = plt.subplots()
+    ax1.plot(dts, ELV.sx[f], 'g-')
+    ax2 = ax1.twinx()
+    ax2.axhline(0, color='k')
+    ax2.plot(ELV.midds[f], m[f], 'r.', dts[1:], inflection/-20, 'b.')
+    if save_fig:
+        figsaver(fig, save_fig, fig_title)
+    print('******************************************************************')
+    return fig
+
+###############################################################################
+def volume_flowdepth_segments(Adict, save_fig=False,
+                            fig_title='Volume vs Flow Depth'):
+    """
+    Regarding your analysis, have you tried some averaging of deposit
+    characteristics (thickness) in the cross shore direction to average 
+    across local topography and then compare that to flow depth? - GG
+    """
+    print('Running plotting routine:', fig_title)
+    out = denan(Adict["SLCode"], 
+                Adict["Transect"], 
+                Adict["Distance2shore"], 
+                Adict["Thickness"], 
+                Adict["MaxThickness"], 
+                Adict["ProjectedFlowDepth"],
+                Adict["Elevation"],
+                Adict["Modern"], 
+                n_rounds=3
+                )
+    out = runfilters(out, 1)
+    SLC = out[0]
+    TSC = out[1]
+    DTS = out[2]
+    THK = Transect((out[3]+out[4])/2., SLC, TSC, DTS)    
+    FLD = Transect(out[5], SLC, TSC, DTS)
+    ELV = Transect(out[6], SLC, TSC, DTS)
+    THKint, FLDint, DTSint, tnumint = interp_flowdepth_to_thickness(THK, FLD)
+    FLDint = np.asarray(FLDint)
+    THKint = np.asarray(THKint)
+    DTSint = np.asarray(DTSint)
+    
+    if save_fig:
+        figsaver(fig, save_fig, fig_title)
+    print('******************************************************************')
+    return fig
 ###############################################################################
 def sand_mud_volume(Adict, dts=2750, sublocation='Sendai', 
                      elevation_datum='Tokyo Peil', save_fig=False, 
@@ -3634,7 +3739,7 @@ def thickness_nextthickness_widget(Adict, fig_title=\
                                               [False for box in boxes])
                                               
     def hide_function(box):
-        ## expand axex when plotting Constitucion
+        ## expand axes when plotting Constitucion
         if box == 'Constitucion':
             ax.axis([0, 80, 0, 80])
         else:
@@ -3874,7 +3979,7 @@ def plotall(menu, dic='Adict', kwargs='', show_figs=True, reverse=True):
 ###############################################################################
 class TsuDBGSFile(GSFile):
     """
-    subclass GSFile to include the appropriate directory
+    subclass of GSFile to define the directory holding Uniform GS data files
     """            
     project_directory = os.path.join(os.path.dirname(__file__),
                                      r'../TsuDepData/Uniform_GS_Data/')
@@ -3884,7 +3989,7 @@ class TsuDBGSFile(GSFile):
 ###############################################################################
 def main(
         xls_file_name='TsunamiSediments_AllData_BL_March2014_r6.xlsx', 
-        dict_file_name = "TsuDB_Adict_2014-08-06.pkl",
+        dict_file_name = "TsuDB_Adict_2014-09-23.pkl",
         from_xls=True,
         save_dict=False,
         saveas_dict=True,
@@ -3918,7 +4023,7 @@ def main(
 
 ############################################################################### 
 if __name__ == '__main__':
-    Adict = main(from_xls=True, save_dict=True)
+    Adict = main(from_xls=False, save_dict=False)
         
     ##--Plotting routines menu--##
     menu = {
@@ -3946,6 +4051,7 @@ if __name__ == '__main__':
 #    plotall(menu, kwargs="save_fig='png'", show_figs=False)
 #    a = TsuDBGSFile('GS_Sumatra_Jantang3_T13.csv')
 #    plotall({k: v for k, v in menu.items() if k > 17})
-    flowdepth_maxsuspensiongradedlayerthickness(Adict)
-    plt.show()
-#    sublocation_plotter(Adict, 'Sendai')
+#    topo_averaged_thickness_flowdepth(Adict)
+#    volume_flowdepth(Adict)
+#    plt.show()
+#    sublocation_plotter(Adict, 'Jantang')
