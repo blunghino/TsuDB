@@ -1031,37 +1031,41 @@ def get_flowdepth_for_GS_file(csv_file_name, Adict, verbose=True):
     use a list of csv file names to get a list of projected flow depths for the
     associated trenches
     """
-    ## initialize list
-    pfd = [None for x in csv_file_name]
     ## find indices for all gs files
     unique = get_B_from_A(csv_file_name, Adict, 'GSFileUniform', 'unique')
+    ## initial values for projected flow depth
+    pfd = get_B_from_A(unique, Adict, 'unique', 'ProjectedFlowDepth')
     ## transect sort and interpolate flow depths
-    out = denan(Adict["SLCode"], 
-                Adict["Transect"], 
-                Adict["Distance2shore"], 
-                Adict["unique"], 
-                Adict["ProjectedFlowDepth"], 
+    out = denan(Adict["SLCode"],
+                Adict["Transect"],
+                Adict["Distance2shore"],
+                Adict["unique"],
+                Adict["ProjectedFlowDepth"],
                 n_rounds=3
                 )
     SLC = out[0]
     TSC = out[1]
     DTS = out[2]
-    UNI = Transect(out[3], SLC, TSC, DTS)    
+    UNI = Transect(out[3], SLC, TSC, DTS)
     FLD = Transect(out[4], SLC, TSC, DTS)
     UNIint, FLDint, DTSint, tnumint = interp_flowdepth_to_thickness(UNI, FLD)
     FLDint = np.asarray(FLDint)
     UNIint = np.asarray(UNIint)
     ## look at flow depth value for each trench
     for ii, ind in enumerate(unique):
-        ## file not in database
-        if ind == '':
-            if verbose:
-                print('File not found: {}'.format(csv_file_name[ii]))
-        else:
-            try:
-                pfd[ii] = FLDint[UNIint == ind][0]
-            except IndexError:
-                pfd[ii] = np.nan
+        ## no exact flow depth value, must get interpolated value
+        if pfd[ii] == '' or np.isnan(pfd[ii]):
+            ## file not in database
+            if ind == '':
+                if verbose:
+                    print('File not found: {}'.format(csv_file_name[ii]))
+            ## find interpolated value
+            else:
+                try:
+                    pfd[ii] = FLDint[UNIint == ind][0]
+                ## no matching flow depth in interpolated values
+                except IndexError:
+                    pfd[ii] = np.nan
     if verbose:
         pprint([(c, p) for c, p in zip(csv_file_name, pfd)])
     
@@ -1226,7 +1230,7 @@ def sort_legend_labels(hands, labs, func=last4):
     else:
         sorton = labs
     ind = np.argsort(sorton)
-    return hands[ind], labs[ind]
+    return list(hands[ind]), list(labs[ind])
     
 ###############################################################################
 def axint(ticklabel, position):
@@ -1244,7 +1248,8 @@ def axround(ticklabel, position):
         
 ###############################################################################
 def insetmap(fig, lat, long, full_globe=False, lbwh=[0.66, 0.70, .23, .23], 
-              map_style=1, zorder=2, mfc='red', resolution='l', frame_on=True):
+              map_style=1, zorder=2, mfc='red', resolution='l', frame_on=True,
+              parallels_meridians=None):
     """
     overlays a map showing the points in "lat" and "long" on figure 'fig'
     
@@ -1255,6 +1260,8 @@ def insetmap(fig, lat, long, full_globe=False, lbwh=[0.66, 0.70, .23, .23],
     width, and height of the inset axis. the values are specified as fractions
     of the total size of the figure
     set map_style = 2 for an etopo map background
+    set parallels_meridians to a integer number of degrees to draw parallels 
+    and meridians on the map
     """
     try:
         from mpl_toolkits.basemap import Basemap
@@ -1277,13 +1284,19 @@ def insetmap(fig, lat, long, full_globe=False, lbwh=[0.66, 0.70, .23, .23],
         m = Basemap(resolution=resolution, area_thresh=10, llcrnrlat=lllat, 
                     llcrnrlon=lllong, urcrnrlat=urlat, urcrnrlon=urlong)
     else:
-        m = Basemap(resolution=resolution, area_thresh=10)
+        m = Basemap(resolution=resolution, area_thresh=10, lat_0=0, lon_0=160)
+        long[long < 0] += 360
     y, x = m(lat, long)
     if map_style == 1:
         m.drawcoastlines(zorder=zorder+1)
         m.fillcontinents('gray', zorder=zorder)
     else:
         m.etopo(zorder=zorder)
+    if parallels_meridians:
+        m.drawmeridians(np.arange(-180,360, parallels_meridians), 
+                        zorder=zorder+1, labels=[0,0,0,1])
+        m.drawparallels(np.arange(-80, 90, parallels_meridians), 
+                        zorder=zorder+1, labels=[1,0,0,0])
     inset.frame_on = frame_on
     m.plot(x, y, marker='o', mec='k', mfc=mfc, zorder=zorder+2, markersize=6, 
            linestyle='None')
@@ -1303,17 +1316,17 @@ def data_globe(Adict, save_fig=False, attribute="Modern",
                 Adict[attribute]
                 )
     out = runfilters(out, 1)
-    fig = plt.figure(figsize=(13,8))
-    fig = insetmap(fig, out[0], out[1], True, lbwh=[0.,0.,1.,1.], map_style=2)
-    plt.title(fig_title)
+    fig = plt.figure(figsize=(16,10))
+    fig = insetmap(fig, out[0], out[1], full_globe=False, lbwh=[.05,.05,.9,.9], 
+                   map_style=2, parallels_meridians=40)
     if save_fig:
         figsaver(fig, save_fig, fig_title)
     print('******************************************************************')                
     return fig     
     
 ###############################################################################
-def localslope_thickness(Adict, save_fig=False, 
-                           fig_title=' Slope vs Thickness'):
+def localslope_thickness(Adict, save_fig=False, agu_print=True, annotate=True,
+                         lin_regress=False, fig_title=' Slope vs Thickness'):
     """
     plot data from Adict- slope vs thickness
     dependent on global variable Adict containing TDB data keyed by attribute
@@ -1325,7 +1338,8 @@ def localslope_thickness(Adict, save_fig=False,
                 Adict["Thickness"], 
                 Adict["MaxThickness"], 
                 Adict["Elevation"], 
-                Adict["Modern"]
+                Adict["Modern"],
+                n_rounds=3
                 )
     out = runfilters(out, 1)
     SLC = out[0]
@@ -1333,31 +1347,68 @@ def localslope_thickness(Adict, save_fig=False,
     DTS = out[2]
     THK = Transect((out[3]+out[4])/2., SLC, TSC, DTS)
     ELV = Transect(out[5], SLC, TSC, DTS)
-    m = ELV.dx / ELV.dds
+    filtr = np.isfinite(THK.dx)
+    d_thk = THK.dx[filtr]
+    m = ELV.dx[filtr] / ELV.dds[filtr]
     cm = ELV.sx / ELV.sds
-    fig = plt.figure(figsize=(20, 6))
-    plt.subplot(133)
-    plt.scatter(cm, THK.sx)
-    plt.axis(ymin=0)
-    plt.axvline(0, color='black')
-    plt.xlabel('Cumulative transect slope')
-    plt.ylabel('Deposit Thickness (cm)')
-    plt.title('Cumulative Transect Slope vs Thickness of Deposit')
-    plt.subplot(132)
-    plt.axhline(0, color='black')
-    plt.axvline(0, color='black')
-    plt.scatter(m, THK.dx)
-    plt.xlabel('Local slope')
-    plt.ylabel('Change in thickness (cm)')
-    plt.title('Local Slope vs Change in Thickness of Deposit')
-    plt.subplot(131)
-    plt.axvline(0, color='black')
-    plt.scatter(m, THK.sx)
-    plt.axis(ymin=0)
-    plt.xlabel('Local slope')
-    plt.ylabel('Deposit Thickness (cm)')
-    plt.title('Local Slope vs Thickness of Deposit')
-    plt.tight_layout()    
+    if agu_print:
+        fig = plt.figure(figsize=(14,12))
+        ax = plt.subplot(111)
+        plt.scatter(m, d_thk)
+        plt.axhline(0, color='black')
+        plt.axvline(0, color='black')
+        plt.xlabel('Local Slope (m/m)')
+        plt.ylabel('Change in Deposit Thickness (cm)')
+        if annotate:
+            n = len(m[np.isfinite(m)])
+            m_p = m > 0
+            m_n = m < 0
+            dt_p = d_thk > 0
+            dt_n = d_thk < 0 
+            I = len(m[m_p * dt_p]) * 100 / n
+            II = len(m[m_p * dt_n]) * 100 / n
+            III = len(m[m_n * dt_n]) * 100 / n
+            IV = len(m[m_n * dt_p]) * 100 / n
+            plt.text(.95, .95, 'I: {:.2f} %'.format(I), fontsize=14,
+                     ha='right', va='bottom', transform=ax.transAxes)
+            plt.text(.95, .05, 'II: {:.2f} %'.format(II), fontsize=14,
+                     ha='right', va='top', transform=ax.transAxes)
+            plt.text(.05, .05, 'III: {:.2f} %'.format(III), fontsize=14,
+                     ha='left', va='top', transform=ax.transAxes)
+            plt.text(.05, .95, 'IV: {:.2f} %'.format(IV), fontsize=14,
+                     ha='left', va='bottom', transform=ax.transAxes)                     
+        elif lin_regress:
+            M, B, R = linregress(m[np.isfinite(m)], 
+                                 d_thk[np.isfinite(m)])[:3]
+            ## little m is topographic local slope
+            line = m*M + B
+            plt.plot(m, line, 'k-')
+            plt.text(.05, .95, r'$\mathdefault{R^2}$ = %.03f' % R**2, fontsize=14,
+                     transform=ax.transAxes, color='k', ha='left', va='bottom') 
+    else:
+        fig = plt.figure(figsize=(20, 6))
+        plt.subplot(133)
+        plt.scatter(cm, THK.sx)
+        plt.axis(ymin=0)
+        plt.axvline(0, color='black')
+        plt.xlabel('Cumulative transect slope')
+        plt.ylabel('Deposit Thickness (cm)')
+        plt.title('Cumulative Transect Slope vs Thickness of Deposit')
+        plt.subplot(132)
+        plt.axhline(0, color='black')
+        plt.axvline(0, color='black')
+        plt.scatter(m, d_thk)
+        plt.xlabel('Local slope')
+        plt.ylabel('Change in thickness (cm)')
+        plt.title('Local Slope vs Change in Thickness of Deposit')
+        plt.subplot(131)
+        plt.axvline(0, color='black')
+        plt.scatter(m, THK.sx[filtr])
+        plt.axis(ymin=0)
+        plt.xlabel('Local slope')
+        plt.ylabel('Deposit Thickness (cm)')
+        plt.title('Local Slope vs Thickness of Deposit')
+        plt.tight_layout()    
     if save_fig:
         figsaver(fig, save_fig, fig_title)
     print('******************************************************************')
@@ -1572,6 +1623,7 @@ def sedimentconcentration_distance(Adict, save_fig=False,
     
 ###############################################################################
 def flowdepth_thickness_semilog(Adict, save_fig=False, japan_only=False,
+                                agu_print=True,
                                 fig_title='Flow Depth vs Thickness Semi Log'):
     """
     plot data from Adict- flow depth vs thickness on a semilog plot
@@ -1609,7 +1661,7 @@ def flowdepth_thickness_semilog(Adict, save_fig=False, japan_only=False,
     sloc = [FLD.sw[FLD_tnum.index(t)] for t in tnumint]
     event = np.asarray(getevents(sloc, Adict))
     emap = Adict['emap']
-    fig = plt.figure(figsize=(13, 9))
+    fig = plt.figure(figsize=(17, 10))
     ax = plt.subplot(111)
     for e in set(event):
         if e:
@@ -1617,45 +1669,48 @@ def flowdepth_thickness_semilog(Adict, save_fig=False, japan_only=False,
             if e not in labs:
                 labs.append(e)
                 hands.append(p)
-    ## linear regression on all data
-    m, b, r = linregress(FLDint, THKint)[:3]
-    r2 = round(r**2, 2)
-    line1 = m*w + b
-    p, = plt.plot(w, line1, 'b-', lw=2)
-    print('Linear Regression: y = {m:.2}*x + {b:.2}'.format(m=m, b=b))
-    labs.append('Linear Regression ({})'.format(r2))
-    hands.append(p)
-    ## function to use with scipy.optimize.curve_fit
-    def func(x, a, b):
-        return a * x**(3/2) + b 
-    ## exponential curve fit (x^(3/2))
-    popt, pcov = curve_fit(func, FLDint, THKint)
-    line4 = func(w, *popt)
-    p, = plt.plot(w, line4, 'm-', lw=2)
-    hands.append(p)
-    labs.append('Exponential Curve Fit')
-    print('Exponential Curve: y = {0:.2}*x^(3/2) + {1:.2}'.format(*popt))
-    ## percentile curve fits
-    for ls, perc in [('--', 10), ('-', 50), ('-.', 90)]:
-        label = '{}th Percentile Linear Regression'.format(perc)
-        bins, percs = percentile_by_bin(FLDint, THKint, percentile=perc, 
-                                        bin_size=1)
-        m_, b_, r_ = linregress(bins, percs)[:3]
-        line = m_*bins + b_
-        p, = plt.plot(bins, line, color='k', lw=2, ls=ls)
+    hands, labs = sort_legend_labels(hands, labs)
+    ## plot a bunch of regression lines
+    if not agu_print:    
+        ## linear regression on all data
+        m, b, r = linregress(FLDint, THKint)[:3]
+        r2 = round(r**2, 2)
+        line1 = m*w + b
+        p, = plt.plot(w, line1, '-', color='Teal', lw=2)
+        print('Linear Regression: y = {m:.2}*x + {b:.2}'.format(m=m, b=b))
+        labs.append('Linear Regression: r^2 = {}'.format(r2))
         hands.append(p)
-        labs.append('{0} ({1:.2})'.format(label, r_**2))
-        print('{label}: y = {m:.2}*x + {b:.2}'.format(label=label, m=m_, b=b_))
-    ## Goto, 2014 relationship
-    line2 = 1.9*w + .29
-    p, = plt.plot(w, line2, 'r-', lw=2)
-    labs.append('Goto, 2014 Median Linear Regression (2% line)')
-    hands.append(p)
-    ## Takashimizu, 2012 relationship
-    line3 = -.189*w**3 + .211*w**2 + 4.46*w - .00826
-    p, = plt.plot(w, line3, 'g-', lw=2)
-    labs.append('Takashimizu, 2012 Polynomial Regression')
-    hands.append(p)
+        ## function to use with scipy.optimize.curve_fit
+        def func(x, a, b):
+            return a * x**(3/2) + b 
+        ## exponential curve fit (x^(3/2))
+        popt, pcov = curve_fit(func, FLDint, THKint)
+        line4 = func(w, *popt)
+        p, = plt.plot(w, line4, '-', color='Orange', lw=2)
+        hands.append(p)
+        labs.append('Exponential: y = {0:.2}*x^(3/2) + {1:.2}'.format(*popt))
+        print('Exponential Curve: y = {0:.2}*x^(3/2) + {1:.2}'.format(*popt))
+        ## percentile curve fits
+        for ls, perc in [('--', 10), ('-', 50), ('-.', 90)]:
+            label = '{}th Percentile Linear Regression'.format(perc)
+            bins, percs = percentile_by_bin(FLDint, THKint, percentile=perc, 
+                                            bin_size=1)
+            m_, b_, r_ = linregress(bins, percs)[:3]
+            line = m_*bins + b_
+            p, = plt.plot(bins, line, color='k', lw=2, ls=ls)
+            hands.append(p)
+            labs.append('{0} ({1:.2})'.format(label, r_**2))
+            print('{label}: y = {m:.2}*x + {b:.2}'.format(label=label, m=m_, b=b_))
+        ## Goto, 2014 relationship
+        line2 = 1.9*w + .29
+        p, = plt.plot(w, line2, 'r-', lw=2)
+        labs.append('Goto, 2014 Median Linear Regression (2% line)')
+        hands.append(p)
+        ## Takashimizu, 2012 relationship
+        line3 = -.189*w**3 + .211*w**2 + 4.46*w - .00826
+        p, = plt.plot(w, line3, 'g-', lw=2)
+        labs.append('Takashimizu, 2012 Polynomial Regression')
+        hands.append(p)
     ## format axes
     ax.set_xscale('log')
     ax.set_ylim(bottom=0, top=100) 
@@ -1707,7 +1762,7 @@ def flowdepth_thickness(Adict, save_fig=False, poly_fit=None, exclude=None,
         sloc = [FLD.sw[FLD.tnum == t][0] for t in tnumint]
         event = np.asarray(getevents(sloc, Adict))
         emap = Adict['emap']
-        fig = plt.figure(figsize=(13, 9))
+        fig = plt.figure(figsize=(16, 12))
         ax = plt.subplot(111)
         for e in set(event):
             if e:
@@ -1810,7 +1865,7 @@ def flowdepth_thickness(Adict, save_fig=False, poly_fit=None, exclude=None,
     return fig
 
 ###############################################################################
-def maxthickness_maxflowdepth(Adict, save_fig=False, agu_print=False, 
+def maxthickness_maxflowdepth(Adict, save_fig=False, agu_print=True, 
                                 exclude=True,
                                 lin_regress=True, fig_title=\
                                 'Maximum Flow Depth vs Maximum Thickness'):  
@@ -1842,7 +1897,7 @@ def maxthickness_maxflowdepth(Adict, save_fig=False, agu_print=False,
     event = np.asarray(getevents(sloc, Adict))
     emap = Adict['emap']
     hands, labs = [], []
-    fig = plt.figure(figsize=(13, 9))
+    fig = plt.figure(figsize=(16, 12))
     ax = plt.subplot(111)
     if agu_print:
         for e in set(event):
@@ -1866,6 +1921,7 @@ def maxthickness_maxflowdepth(Adict, save_fig=False, agu_print=False,
     ax.set_xlim([0, 25])             
     ax.tick_params(axis='both', which='major', labelsize=18)
     ax.xaxis.set_major_locator(mpl.ticker.LinearLocator(5))
+    hands, labs = sort_legend_labels(hands, labs)
     plt.legend(hands, labs, numpoints=1, frameon=False, loc=2)
     plt.xlabel('Maximum Flow Depth (m)', fontsize=18)
     plt.ylabel('Maximum Deposit Thickness (cm)', fontsize=18)
@@ -1923,7 +1979,7 @@ def flowdepth_maxsuspensiongradedlayerthickness(Adict, save_fig=False,
     
 ###############################################################################
 def meangs_thickness(Adict, save_fig=False, exclude=True, sand_only=False,
-                     plot_std_instead=False,
+                     plot_std_instead=False, agu_print=True,
                      fig_title='Mean grain size vs Thickness'):
     """
     plot data from Adict - mean grain size vs thickness
@@ -1972,12 +2028,14 @@ def meangs_thickness(Adict, save_fig=False, exclude=True, sand_only=False,
         plt.xlabel(r'Standard Deviation in Grain Size ($\mathsf{\phi}$)')
     else:
         plt.xlabel(r'Mean Grain Size ($\mathsf{\phi}$)')
-    plt.title(fig_title)
+    if not agu_print:
+        plt.title(fig_title)
     if sand_only:
         plt.xlim(gs_min_max)
         loc = 2
     else:
         loc = 1
+    handles, labels = sort_legend_labels(handles, labels)
     plt.legend(handles, labels, numpoints=1, frameon=False, loc=loc)
     if save_fig:
         figsaver(fig, save_fig, fig_title)    
@@ -1987,7 +2045,7 @@ def meangs_thickness(Adict, save_fig=False, exclude=True, sand_only=False,
 ###############################################################################
 def meangs_flowdepth(Adict, save_fig=False, exclude=True, lin_regress=True,
                      interpolate_flowdepth=True, sand_only=False,
-                     plot_std_instead=False,
+                     plot_std_instead=False, agu_print=True,
                      fig_title='Flow depth vs mean grain size'):
     """
     plot data from Adict - thickness vs flow depth showing mean grain size
@@ -2041,7 +2099,8 @@ def meangs_flowdepth(Adict, save_fig=False, exclude=True, lin_regress=True,
                           ms=12)
             handles.append(p)
             labels.append(e)
-    plt.title(fig_title)
+    if not agu_print:
+        plt.title(fig_title)
     plt.xlabel('Flow Depth (m)')
     if plot_std_instead:
         plt.ylabel(r'Standard Deviation in Grain Size ($\mathsf{\phi}$)')
@@ -2054,6 +2113,7 @@ def meangs_flowdepth(Adict, save_fig=False, exclude=True, lin_regress=True,
     else:
         ax.invert_yaxis()
         loc = 4
+    handles, labels = sort_legend_labels(handles, labels)
     plt.legend(handles, labels, numpoints=1, frameon=False, loc=loc)
     if lin_regress:
         fld = np.asarray(fld)
@@ -2068,7 +2128,7 @@ def meangs_flowdepth(Adict, save_fig=False, exclude=True, lin_regress=True,
     return fig
     
 ###############################################################################
-def meangs_flowdepth_thickness(Adict, save_fig=False, exclude=True, 
+def meangs_flowdepth_thickness(Adict, save_fig=False, exclude=True, agu_print=True,
                                japan_only=False, plot_std_instead=False,
                                  interpolate_flowdepth=True, sand_only=False,
                      fig_title='Flow depth vs Thickness with mean grain size'):
@@ -2127,12 +2187,14 @@ def meangs_flowdepth_thickness(Adict, save_fig=False, exclude=True,
     else:
         p = plt.scatter(fld, thk, c=MGS.sx, s=50, vmin=vmin, vmax=vmax, 
                         cmap='hot_r')
-    plt.title(fig_title)
+    if not agu_print:
+        plt.title(fig_title)
     plt.xlabel('Flow Depth (m)')
     plt.ylabel('Deposit Thickness (cm)')
     plt.xlim(xmin=0)
     plt.ylim(ymin=0)
     cbar = plt.colorbar(orientation='horizontal', shrink=.7, extend=extend)
+    cbar.ax.invert_xaxis()
     if plot_std_instead:
         cbar.set_label(r'Standard Deviation in Grain Size ($\mathsf{\phi}$)')
     else:
@@ -3470,7 +3532,7 @@ def flowdepth_nextflowdepth(Adict, save_fig=False,
     return fig
 
 ###############################################################################
-def topo_averaged_thickness_flowdepth(Adict, save_fig=False,
+def topo_classified_thickness_flowdepth(Adict, save_fig=False,
                             fig_title='Topography, Thickness, and Flow Depth'):
     """
     Regarding your analysis, have you tried some averaging of deposit
@@ -4070,32 +4132,26 @@ if __name__ == '__main__':
         
     ##--Plotting routines menu--##
     menu = {
-            1: distance_thickness_panels,
-            2: distance_thickness,
-            3: thickness_nextthickness,
-            4: distance_flowdepth_panels,
-            5: distance_flowdepth,
-            6: flowdepth_nextflowdepth,
-            7: flowdepth_thickness,        
-            8: slope_flowdepth_thickness,        
-            9: averagethickness_flowdepth,
-            10: maxthickness_maxflowdepth,
-            11: meangs_flowdepth_thickness,
-            12: volume_flowdepth,        
+            1: data_globe,
+            2: flowdepth_thickness,
+            3: maxthickness_maxflowdepth,
+            4: localslope_thickness,
+            5: meangs_flowdepth_thickness,
+            6: meangs_flowdepth,
+            7: meangs_thickness,
+            8: flowdepth_thickness_semilog,
+            9: sedimentconcentration_histogram,
+            10: sedimentconcentration_distance,
+            11: flowdepth_maxsuspensiongradedlayerthickness,
+            12: volume_flowdepth,
             13: volume_slope,
             14: distance_changeinthickness,
-            15: distance_changeinthickness_panels,
-            16: thickness_nextthickness_flowdepth,
-            17: distance_meangs_panels,
-            18: localslope_thickness,
-            19: toposlope_depositslope,
             }
     ##--Enter commands--##
 #    plotall(menu, kwargs="save_fig='png'", show_figs=False)
-#    a = TsuDBGSFile('GS_Sumatra_Jantang3_T13.csv')
-#    plotall({k: v for k, v in menu.items() if k > 17})
-#    topo_averaged_thickness_flowdepth(Adict)
-#    volume_flowdepth(Adict)
+#    plotall({k: v for k, v in menu.items() if k < 10})
+#    topo_classified_thickness_flowdepth(Adict)
+#    flowdepth_thickness_semilog(Adict)
 #    plt.show()
 #    sublocation_plotter(Adict, 'Jantang')
     pfd = get_flowdepth_for_GS_file(Adict['high_res_gs'], Adict)
