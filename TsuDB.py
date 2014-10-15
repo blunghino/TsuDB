@@ -1026,13 +1026,13 @@ def get_maxsuspensiongradedlayerthickness(Adict):
     return sglt
     
 ###############################################################################
-def get_flowdepth_for_GS_file(csv_file_name, Adict, verbose=True):
+def get_flowdepth_for_GS_file(csv_file_names, Adict, verbose=True):
     """
     use a list of csv file names to get a list of projected flow depths for the
     associated trenches
     """
     ## find indices for all gs files
-    unique = get_B_from_A(csv_file_name, Adict, 'GSFileUniform', 'unique')
+    unique = get_B_from_A(csv_file_names, Adict, 'GSFileUniform', 'unique')
     ## initial values for projected flow depth
     pfd = get_B_from_A(unique, Adict, 'unique', 'ProjectedFlowDepth')
     ## transect sort and interpolate flow depths
@@ -1067,7 +1067,7 @@ def get_flowdepth_for_GS_file(csv_file_name, Adict, verbose=True):
                 except IndexError:
                     pfd[ii] = np.nan
     if verbose:
-        pprint([(c, p) for c, p in zip(csv_file_name, pfd)])
+        pprint([(c, p) for c, p in zip(csv_file_names, pfd)])
     
     return pfd
     
@@ -1120,7 +1120,7 @@ def figsaver(fig, save_fig, fig_title='untitled', overwrite=False, dpi=450,
     """
     if isinstance(save_fig, str):
         meow = dt.datetime.strftime(dt.datetime.today(), '%Y-%m-%d')
-        directory = os.path.join(os.getcwd(), 'TsuDB_figures_on_'+meow)
+        directory = os.path.join(os.getcwd(), 'TsuDB_figures_on_{}'.format(meow))
         if not os.path.exists(directory):
             print('Making directory', directory)
             os.mkdir(directory)
@@ -4149,9 +4149,11 @@ if __name__ == '__main__':
             }
     ##--Enter commands--##
 #    plotall(menu, kwargs="save_fig='png'", show_figs=False)
-#    plotall({k: v for k, v in menu.items() if k < 10})
+#    plotall({k: v for k, v in menu.items() if k < 10}, 
+#            kwargs="save_fig='png'", show_figs=False)
 #    topo_classified_thickness_flowdepth(Adict)
-#    flowdepth_thickness_semilog(Adict)
-#    plt.show()
 #    sublocation_plotter(Adict, 'Jantang')
-    pfd = get_flowdepth_for_GS_file(Adict['high_res_gs'], Adict)
+#    pfd = get_flowdepth_for_GS_file(Adict['high_res_gs'], Adict)
+    csv_file_names = Adict['high_res_gs']
+    unique = get_B_from_A(csv_file_names, Adict, 'GSFileUniform', 'unique')
+    dts = get_B_from_A(unique, Adict, 'unique', 'Distance2shore')
