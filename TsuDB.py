@@ -236,7 +236,17 @@ def initialize_Adict():
             'Chile, 2010': 'yo', 
             'Samoa, 2009': 'mp',
             'Sumatra, 2005': 'r^'
-            }  
+            }
+    ## approximate tsunami earthquake source locations (lat, lon, depth [km])
+    sources = {
+        'Peru, 2001': (-16.38, -73.5, 32), 
+        'Japan, 2011': (38.297, 142.373, 29), 
+        'Indian Ocean, 2004': (3.295, 95.982, 30), 
+        'Papua New Guinea, 1998': (-2.975, 142.692, 10), 
+        'Chile, 2010': (-36.122, -72.898, 22.9), 
+        'Samoa, 2009': (-15.489, -172.095, 18),
+        'Sumatra, 2005': (2.05, 97.06, 33.7)
+    }
     ## list of tuples specifying incomplete transects to exclude from some 
     ## plots. This list is based off spatial coverage of thickness data.
     incomplete_transect = [('Jantang', 4), ('Jantang', 5), ('Lhok Kruet', 4),  
@@ -283,7 +293,7 @@ def initialize_Adict():
     dic = {'floats': floats, 'event_lookup': event_lookup, 'emap': emap, 
            'incomplete_transect': incomplete_transect, 'mw_lookup': mw_lookup,
            'typegs_lookup': typegs_lookup, 'datum_lookup': datum_lookup,
-           'high_res_gs': high_res_gs}
+           'high_res_gs': high_res_gs, 'sources': sources}
     return dic
         
 ###############################################################################
@@ -1249,7 +1259,7 @@ def axround(ticklabel, position):
 ###############################################################################
 def insetmap(fig, lat, long, full_globe=False, lbwh=[0.66, 0.70, .23, .23], 
               map_style=1, zorder=2, mfc='red', resolution='l', frame_on=True,
-              parallels_meridians=None):
+              parallels_meridians=None, sources=None):
     """
     overlays a map showing the points in "lat" and "long" on figure 'fig'
     
@@ -1300,12 +1310,38 @@ def insetmap(fig, lat, long, full_globe=False, lbwh=[0.66, 0.70, .23, .23],
     inset.frame_on = frame_on
     m.plot(x, y, marker='o', mec='k', mfc=mfc, zorder=zorder+2, markersize=6, 
            linestyle='None')
+    if sources:
+        names = []
+        source_lat = np.zeros(len(sources))
+        source_lon = source_lat.copy()
+        for ii, (k, (s_lat, s_lon, _)) in enumerate(sources.items()):
+            names.append(k)
+            source_lat[ii] = s_lat
+            source_lon [ii] = s_lon
+        source_lon[source_lon < 0] += 360
+        source_y, source_x = m(source_lat, source_lon)
+        for ii, s in enumerate(names):
+            arrow = None
+            up = 0
+            if s in ('Peru, 2001', 'Chile, 2010'):
+                rl = -1
+                ha = 'right'
+            elif s in ('Indian Ocean, 2004'):
+                rl = -1
+                up = 1
+                ha = 'left'
+            else:
+                rl = 1
+                ha = 'left'
+            plt.annotate(s, (source_x[ii], source_y[ii]), xytext=(10*rl,25*up), 
+                         textcoords='offset points', horizontalalignment=ha,
+                         arrowprops=dict(arrowstyle='-', color='w'), color='w')
     return fig
     
 ###############################################################################
 ## Plotting routines    
 ###############################################################################    
-def data_globe(Adict, save_fig=False, attribute="Modern",
+def data_globe(Adict, save_fig=False, attribute="Modern", label_tsunamis=True,
                fig_title='Global distribution of tsunami deposit data'):
     """
     plot data from any Adict key 'attribute' on world map
@@ -1316,9 +1352,14 @@ def data_globe(Adict, save_fig=False, attribute="Modern",
                 Adict[attribute]
                 )
     out = runfilters(out, 1)
+    if label_tsunamis:
+        sources = Adict['sources']
+    else:
+        sources = None
     fig = plt.figure(figsize=(16,10))
     fig = insetmap(fig, out[0], out[1], full_globe=False, lbwh=[.05,.05,.9,.9], 
-                   map_style=2, parallels_meridians=40)
+                   map_style=2, parallels_meridians=40, 
+                   sources=sources)
     if save_fig:
         figsaver(fig, save_fig, fig_title)
     print('******************************************************************')                
@@ -1366,16 +1407,16 @@ def localslope_thickness(Adict, save_fig=False, agu_print=True, annotate=True,
             dt_p = d_thk > 0
             dt_n = d_thk < 0 
             I = len(m[m_p * dt_p]) * 100 / n
-            II = len(m[m_p * dt_n]) * 100 / n
+            IV = len(m[m_p * dt_n]) * 100 / n
             III = len(m[m_n * dt_n]) * 100 / n
-            IV = len(m[m_n * dt_p]) * 100 / n
+            II = len(m[m_n * dt_p]) * 100 / n
             plt.text(.95, .95, 'I: {:.2f} %'.format(I), fontsize=14,
                      ha='right', va='bottom', transform=ax.transAxes)
-            plt.text(.95, .05, 'II: {:.2f} %'.format(II), fontsize=14,
+            plt.text(.95, .05, 'IV: {:.2f} %'.format(IV), fontsize=14,
                      ha='right', va='top', transform=ax.transAxes)
             plt.text(.05, .05, 'III: {:.2f} %'.format(III), fontsize=14,
                      ha='left', va='top', transform=ax.transAxes)
-            plt.text(.05, .95, 'IV: {:.2f} %'.format(IV), fontsize=14,
+            plt.text(.05, .95, 'II: {:.2f} %'.format(II), fontsize=14,
                      ha='left', va='bottom', transform=ax.transAxes)                     
         elif lin_regress:
             M, B, R = linregress(m[np.isfinite(m)], 
@@ -4094,7 +4135,7 @@ class TsuDBGSFile(GSFile):
 ###############################################################################
 def main(
         xls_file_name='TsunamiSediments_AllData_BL_March2014_r6.xlsx', 
-        dict_file_name = "TsuDB_Adict_2014-09-23.pkl",
+        dict_file_name = "TsuDB_Adict_2014-10-23.pkl",
         from_xls=True,
         save_dict=False,
         saveas_dict=True,
@@ -4128,7 +4169,7 @@ def main(
 
 ############################################################################### 
 if __name__ == '__main__':
-    Adict = main(from_xls=False, save_dict=False)
+    Adict = main(from_xls=False, save_dict=True)
         
     ##--Plotting routines menu--##
     menu = {
@@ -4154,6 +4195,8 @@ if __name__ == '__main__':
 #    topo_classified_thickness_flowdepth(Adict)
 #    sublocation_plotter(Adict, 'Jantang')
 #    pfd = get_flowdepth_for_GS_file(Adict['high_res_gs'], Adict)
-    csv_file_names = Adict['high_res_gs']
-    unique = get_B_from_A(csv_file_names, Adict, 'GSFileUniform', 'unique')
-    dts = get_B_from_A(unique, Adict, 'unique', 'Distance2shore')
+#    csv_file_names = Adict['high_res_gs']
+#    unique = get_B_from_A(csv_file_names, Adict, 'GSFileUniform', 'unique')
+#    dts = get_B_from_A(unique, Adict, 'unique', 'Distance2shore')
+    data_globe(Adict)
+    plt.show()
