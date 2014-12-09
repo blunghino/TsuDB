@@ -47,6 +47,16 @@ from matplotlib import cm, pyplot as plt
 
 from GS_tools.gsfile import GSFile
 
+## optional imports required only for plotting subfunctions
+try:
+    from mpl_toolkits.basemap import Basemap
+except ImportError:
+    pass
+try:
+    from distance_on_unit_sphere import distance_on_unit_sphere
+except ImportError:
+    pass
+
 ###############################################################################
 ##   SUBFUNCTIONS
 ###############################################################################       
@@ -235,7 +245,7 @@ def initialize_Adict():
             'Papua New Guinea, 1998': 'gs', 
             'Chile, 2010': 'yo', 
             'Samoa, 2009': 'mp',
-            'Sumatra, 2005': 'r^'
+            'Sumatra, 2005': 'c^'
             }
     ## approximate tsunami earthquake source locations (lat, lon, depth [km])
     sources = {
@@ -991,7 +1001,7 @@ def get_values_on_transect_with_tuple(transect_tuple, Adict, *keys):
     return outs
     
 ###############################################################################
-def get_gsmeans(Adict, return_std_instead=False, gs_min_max=None):
+def get_gsmeans(Adict, return_std_instead=False, gs_min_max=None, mm=False):
     """
     reads in ALL GSFiles and returns an array of bulk means for each trench
     
@@ -1011,6 +1021,8 @@ def get_gsmeans(Adict, return_std_instead=False, gs_min_max=None):
                 print(e)
                 print('TsuDB.get_gsmeans: Error at', gs)
                 continue
+    if mm is True:
+        gsmeans = 2.**-gsmeans
     return gsmeans
     
 ###############################################################################
@@ -1241,6 +1253,35 @@ def sort_legend_labels(hands, labs, func=last4):
         sorton = labs
     ind = np.argsort(sorton)
     return list(hands[ind]), list(labs[ind])
+
+###############################################################################
+def distance_to_source(Adict, lats, lons, events, sources=None, 
+                       Re=6373.):
+    """
+    calculate the distance between points with latitudes `lats` and 
+    longitudes `lons` and sources at `events` 
+    if `sources` is None, uses the sources hardcoded into Adict
+    `Re` is the radius of the sphere (radius of earth in km by default)
+    """
+    if sources is None:
+        sources = Adict['sources']
+    names = []
+    source_lat = np.zeros(len(sources))
+    source_lon = source_lat.copy()
+    for ii, (k, (s_lat, s_lon, _)) in enumerate(sources.items()):
+        names.append(k)
+        source_lat[ii] = s_lat
+        source_lon[ii] = s_lon
+    names = np.asarray(names)
+    distances = np.zeros_like(lats)
+    for ii, e in enumerate(events):
+        lat1 = lats[ii]
+        lon1 = lons[ii]
+        f = names == e
+        lat2 = source_lat[f]
+        lon2 = source_lon[f]
+        distances[ii] = Re * distance_on_unit_sphere(lat1, lon1, lat2, lon2)
+    return distances
     
 ###############################################################################
 def axint(ticklabel, position):
@@ -1273,9 +1314,10 @@ def insetmap(fig, lat, long, full_globe=False, lbwh=[0.66, 0.70, .23, .23],
     set parallels_meridians to a integer number of degrees to draw parallels 
     and meridians on the map
     """
+    ## check if you have Basemap
     try:
-        from mpl_toolkits.basemap import Basemap
-    except ImportError:
+        check = Basemap
+    except NameError:
         return fig
     inset = fig.add_axes(lbwh, zorder=zorder, frame_on=frame_on)
     if not full_globe:
@@ -1401,6 +1443,7 @@ def localslope_thickness(Adict, save_fig=False, agu_print=True, annotate=True,
         plt.xlabel('Local Slope (m/m)')
         plt.ylabel('Change in Deposit Thickness (cm)')
         if annotate:
+            fs = 20
             n = len(m[np.isfinite(m)])
             m_p = m > 0
             m_n = m < 0
@@ -1410,13 +1453,13 @@ def localslope_thickness(Adict, save_fig=False, agu_print=True, annotate=True,
             IV = len(m[m_p * dt_n]) * 100 / n
             III = len(m[m_n * dt_n]) * 100 / n
             II = len(m[m_n * dt_p]) * 100 / n
-            plt.text(.95, .95, 'I: {:.2f} %'.format(I), fontsize=14,
+            plt.text(.95, .95, 'I: {:.0f} %'.format(I), fontsize=fs,
                      ha='right', va='bottom', transform=ax.transAxes)
-            plt.text(.95, .05, 'IV: {:.2f} %'.format(IV), fontsize=14,
+            plt.text(.95, .05, 'IV: {:.0f} %'.format(IV), fontsize=fs,
                      ha='right', va='top', transform=ax.transAxes)
-            plt.text(.05, .05, 'III: {:.2f} %'.format(III), fontsize=14,
+            plt.text(.05, .05, 'III: {:.0f} %'.format(III), fontsize=fs,
                      ha='left', va='top', transform=ax.transAxes)
-            plt.text(.05, .95, 'II: {:.2f} %'.format(II), fontsize=14,
+            plt.text(.05, .95, 'II: {:.0f} %'.format(II), fontsize=fs,
                      ha='left', va='bottom', transform=ax.transAxes)                     
         elif lin_regress:
             M, B, R = linregress(m[np.isfinite(m)], 
@@ -1664,7 +1707,7 @@ def sedimentconcentration_distance(Adict, save_fig=False,
     
 ###############################################################################
 def flowdepth_thickness_semilog(Adict, save_fig=False, japan_only=False,
-                                agu_print=True,
+                                agu_print=True, lines=True,
                                 fig_title='Flow Depth vs Thickness Semi Log'):
     """
     plot data from Adict- flow depth vs thickness on a semilog plot
@@ -1702,7 +1745,7 @@ def flowdepth_thickness_semilog(Adict, save_fig=False, japan_only=False,
     sloc = [FLD.sw[FLD_tnum.index(t)] for t in tnumint]
     event = np.asarray(getevents(sloc, Adict))
     emap = Adict['emap']
-    fig = plt.figure(figsize=(17, 10))
+    fig = plt.figure(figsize=(19, 10))
     ax = plt.subplot(111)
     for e in set(event):
         if e:
@@ -1752,6 +1795,22 @@ def flowdepth_thickness_semilog(Adict, save_fig=False, japan_only=False,
         p, = plt.plot(w, line3, 'g-', lw=2)
         labs.append('Takashimizu, 2012 Polynomial Regression')
         hands.append(p)
+    elif lines:
+        ## 90th percentile curve
+        perc = 90
+        label = '{}th Percentile Linear Regression'.format(perc)
+        bins, percs = percentile_by_bin(FLDint, THKint, percentile=perc, 
+                                        bin_size=1)
+        m_, b_, r_ = linregress(bins, percs)[:3]
+        line = m_*bins + b_
+        p, = plt.plot(bins, line, color='k', lw=2)
+        hands.append(p)
+        labs.append(label + r': $\mathdefault{R^2 =}$ ' + str(round(r_**2,2)))
+        ## Goto, 2014 relationship
+        line2 = 2.8*w + 4.4
+        p, = plt.plot(w, line2, color='Orange', lw=2)
+        labs.append('Goto et al., 2014: 90th Percentile Linear Regression')
+        hands.append(p)
     ## format axes
     ax.set_xscale('log')
     ax.set_ylim(bottom=0, top=100) 
@@ -1759,7 +1818,7 @@ def flowdepth_thickness_semilog(Adict, save_fig=False, japan_only=False,
 #             transform=ax.transAxes, ha='right', va='top')
     plt.xlabel('Flow Depth (m)')
     plt.ylabel('Deposit Thickness (cm)')
-    plt.legend(hands, labs, numpoints=1, loc=2, frameon=False)
+    plt.legend(hands, labs, numpoints=1, loc=2, frameon=False, fontsize=22)
     if save_fig:
         figsaver(fig, save_fig, fig_title)
     print('******************************************************************')   
@@ -1907,7 +1966,7 @@ def flowdepth_thickness(Adict, save_fig=False, poly_fit=None, exclude=None,
 
 ###############################################################################
 def maxthickness_maxflowdepth(Adict, save_fig=False, agu_print=True, 
-                                exclude=True,
+                                exclude=True, semi_log=False,
                                 lin_regress=True, fig_title=\
                                 'Maximum Flow Depth vs Maximum Thickness'):  
     """
@@ -1957,15 +2016,20 @@ def maxthickness_maxflowdepth(Adict, save_fig=False, agu_print=True,
         m, b, r = linregress(fmx, tmx)[:3]
         r2 = round(r**2, 2)
         plt.plot(fmx, m*fmx+b, 'k-', zorder=-1)
-        plt.text(.98, .98, r'$\mathdefault{R^2 =}$ '+str(r2), fontsize=14, 
+        plt.text(.98, .98, r'$\mathdefault{R^2 =}$ '+str(r2), fontsize=18, 
                  transform=ax.transAxes, ha='right', va='top')
-    ax.set_xlim([0, 25])             
-    ax.tick_params(axis='both', which='major', labelsize=18)
-    ax.xaxis.set_major_locator(mpl.ticker.LinearLocator(5))
+    if semi_log:
+        ax.set_xscale('log')
+    else:
+        ax.set_xlim([0, 20])             
+        ax.tick_params(axis='both', which='major', labelsize=20)
+        ax.xaxis.set_major_locator(mpl.ticker.LinearLocator(5))
     hands, labs = sort_legend_labels(hands, labs)
-    plt.legend(hands, labs, numpoints=1, frameon=False, loc=2)
-    plt.xlabel('Maximum Flow Depth (m)', fontsize=18)
-    plt.ylabel('Maximum Deposit Thickness (cm)', fontsize=18)
+    plt.legend(hands, labs, numpoints=1, frameon=False, fontsize=22,
+               loc=2 if lin_regress else 1)
+
+    plt.xlabel('Maximum Flow Depth (m)')
+    plt.ylabel('Maximum Deposit Thickness (cm)')
     if save_fig:
         figsaver(fig, save_fig, fig_title)
     print('******************************************************************')
@@ -2012,12 +2076,13 @@ def flowdepth_maxsuspensiongradedlayerthickness(Adict, save_fig=False,
                 hands.append(p)
     plt.xlabel('Flow Depth (m)')
     plt.ylabel('Suspension Graded Layer Thickness (cm)')
-    plt.legend(hands, labs, numpoints=1)
+    plt.ylim(bottom=0, top=nanmax(sglt_int)+1)
+    plt.legend(hands, labs, numpoints=1, frameon=False)
     if save_fig:
         figsaver(fig, save_fig, fig_title)
     print('******************************************************************')
     return fig
-    
+
 ###############################################################################
 def meangs_thickness(Adict, save_fig=False, exclude=True, sand_only=False,
                      plot_std_instead=False, agu_print=True,
@@ -2086,7 +2151,7 @@ def meangs_thickness(Adict, save_fig=False, exclude=True, sand_only=False,
 ###############################################################################
 def meangs_flowdepth(Adict, save_fig=False, exclude=True, lin_regress=True,
                      interpolate_flowdepth=True, sand_only=False,
-                     plot_std_instead=False, agu_print=True,
+                     plot_std_instead=False, agu_print=True, mm=False,
                      fig_title='Flow depth vs mean grain size'):
     """
     plot data from Adict - thickness vs flow depth showing mean grain size
@@ -2107,7 +2172,7 @@ def meangs_flowdepth(Adict, save_fig=False, exclude=True, lin_regress=True,
     else:
         gs_min_max = None
     gsmeans = get_gsmeans(Adict, return_std_instead=plot_std_instead,
-                          gs_min_max=gs_min_max)
+                          gs_min_max=gs_min_max, mm=mm)
     out = denan(Adict["SLCode"], 
                 Adict["Transect"], 
                 Adict["Distance2shore"], 
@@ -2143,26 +2208,43 @@ def meangs_flowdepth(Adict, save_fig=False, exclude=True, lin_regress=True,
     if not agu_print:
         plt.title(fig_title)
     plt.xlabel('Flow Depth (m)')
-    if plot_std_instead:
+    if plot_std_instead and mm:
+        plt.ylabel('Standard Deviation in Grain Size (mm)')
+    elif plot_std_instead and not mm:
         plt.ylabel(r'Standard Deviation in Grain Size ($\mathsf{\phi}$)')
+    elif mm:
+        plt.ylabel('Mean Grain Size (mm)')
     else:
         plt.ylabel(r'Mean Grain Size ($\mathsf{\phi}$)')
     plt.xlim(xmin=0)
+    dx = 0
     if sand_only:
         plt.ylim(gs_min_max)
         loc = 2
+    elif mm:
+        loc = 2
+        dx = .85
     else:
-        ax.invert_yaxis()
+        ax.invert_yaxis() 
         loc = 4
     handles, labels = sort_legend_labels(handles, labels)
-    plt.legend(handles, labels, numpoints=1, frameon=False, loc=loc)
-    if lin_regress:
-        fld = np.asarray(fld)
+    plt.legend(handles, labels, numpoints=1, frameon=False, loc=loc, fontsize=22)
+    fld = np.asarray(fld)
+    if lin_regress is True:
         m, b, r = linregress(fld, mgs)[:3]
         plt.plot(fld, fld*m+b, 'k-', zorder=-1)
-        plt.text(.02, .06, 
+        plt.text(.02+dx, .06, 
                  r'$\mathdefault{R^2 =}$ %0.2f' % r**2,
-                 fontsize=14, transform=ax.transAxes, ha='left', va='top')
+                 fontsize=18, transform=ax.transAxes, ha='left', va='top')
+    elif lin_regress == 'exponential':
+        ## function to use with scipy.optimize.curve_fit
+        def func(x, a, b, c):
+            return a * np.exp(-b *x) + c 
+        ## exponential curve fit (x^(3/2))
+        popt, pcov = curve_fit(func, fld, mgs)
+        x = np.arange(max(fld)+1)
+        line4 = func(x, *popt)
+        p, = plt.plot(x, line4, '-', color='k', lw=2)
     if save_fig:
         figsaver(fig, save_fig, fig_title)    
     print('******************************************************************')
@@ -2226,7 +2308,7 @@ def meangs_flowdepth_thickness(Adict, save_fig=False, exclude=True, agu_print=Tr
         p = plt.scatter(fld[FLD.tnum == t], thk[FLD.tnum == t], c=MGS.sx[FLD.tnum == t],
                         s=50, vmin=vmin, vmax=vmax, cmap='hot_r')
     else:
-        p = plt.scatter(fld, thk, c=MGS.sx, s=50, vmin=vmin, vmax=vmax, 
+        p = plt.scatter(fld, thk, c=MGS.sx, s=100, vmin=vmin, vmax=vmax, 
                         cmap='hot_r')
     if not agu_print:
         plt.title(fig_title)
@@ -2846,9 +2928,65 @@ def percenttransect_flowdepth(Adict, save_fig=False, inset_map=False,
         figsaver(fig, save_fig, fig_title, transparent=True)
     print('******************************************************************')
     return fig   
+
+###############################################################################
+def distancetosource_maxflowdepth(Adict, save_fig=False, agu_print=True, 
+                       fig_title='Maximum Flow Depth vs Distance From Source'):
+    """
+    plot data from Adict- distance to source vs max flow depth
+    """
+    print('Running plotting routine:', fig_title)
+    out = denan(Adict["SLCode"],
+                Adict["Transect"],
+                Adict["Distance2shore"],
+                Adict["FlowDepth"],
+                Adict["Lat"],
+                Adict["Long"],
+                Adict["Modern"],
+                n_rounds=4
+                )    
+    out = runfilters(out, 1)
+    FLD = Transect(out[3], out[0], out[1], out[2])
+    LAT = Transect(out[4], out[0], out[1], out[2])
+    LON = Transect(out[5], out[0], out[1], out[2])
+    filtr = np.isfinite(FLD.smxt)
+    slocs = FLD.sw[filtr]
+    maxf = FLD.smxt[filtr]
+    latf = np.ones_like(maxf) * np.nan
+    lonf = latf.copy()
+    for ii, tnum in enumerate(FLD.tnum[filtr]):
+        f = LAT.tnum == tnum
+        lats = LAT.sx[f]
+        lons = LON.sx[f]
+        try:
+            latf[ii] = lats[np.isfinite(lats)][0]
+            lonf[ii] = lons[np.isfinite(lons)][0]
+        ## no lat lons on transect
+        except IndexError:
+            continue
+    events = np.asarray(getevents(slocs, Adict))
+    emap = Adict['emap']
+    d = distance_to_source(Adict, latf, lonf, events)
+    hands, labs = [], []
+    fig = plt.figure(figsize=(16,12))
+    for e in set(events):
+        if e:
+            f = events == e
+            p, = plt.plot(d[f], maxf[f], emap[e], ms=12)
+            if any(np.isfinite(latf[f])):
+                hands.append(p)
+                labs.append(e)
+    plt.xlabel('Distance From Source (km)')
+    plt.ylabel('Maximum Flow Depth (m)')
+    hands, labs = sort_legend_labels(hands, labs)
+    plt.legend(hands, labs, numpoints=1, loc=2, fontsize=22, frameon=False)
+    if save_fig:
+        figsaver(fig, save_fig, fig_title)   
+    print('******************************************************************')
+    return fig
     
 ###############################################################################
-def distance_flowdepth(Adict, save_fig=False, inset_map=False, 
+def distance_flowdepth(Adict, save_fig=False, inset_map=False, agu_print=True,
                         fig_title='Flow Depth vs Distance to shore'):
     """
     plot data from Adict- distance to shore vs flow depth
@@ -2869,22 +3007,34 @@ def distance_flowdepth(Adict, save_fig=False, inset_map=False,
     LAT = out[4]
     LON = out[5]
     handles, labels = [], []
-    cmap = cm.get_cmap('spectral')
-    n = int(nanmax(FLD.tnum))
-    colors = [cmap((ii+1)/(n+1)) for ii in range(n)]
-    sym = 'v*o^s<pd>h'
-    handles, labels = [], []
+
     fig = plt.figure(figsize=(23, 12))
-    for ii in range(n):
-        filtr = FLD.tnum == ii+1
-        plt.plot(FLD.sds[filtr], FLD.sx[filtr], '-', c=colors[ii])
-        p, = plt.plot(FLD.sds[filtr], FLD.sx[filtr], sym[ii%10], c=colors[ii])
-        handles.append(p)
-        labels.append(SLdecoder(FLD.sw[filtr][0], Adict["SLKey"]))
-    plt.title(fig_title)
-    plt.xlabel('Distance to shore (m)')
-    plt.ylabel('Flow depth (m)')
-    plt.legend(handles, labels, numpoints=1, fontsize=10)
+    if agu_print:    
+        event = np.asarray(getevents(FLD.sw, Adict))
+        emap = Adict['emap']
+        for e in set(event):
+            if e:
+                p, = plt.plot(FLD.sds[event == e], FLD.sx[event == e], emap[e],
+                              ms=12)
+                labels.append(e)
+                handles.append(p)
+        handles, labels = sort_legend_labels(handles, labels)
+    else:
+        cmap = cm.get_cmap('spectral')
+        n = int(nanmax(FLD.tnum))
+        colors = [cmap((ii+1)/(n+1)) for ii in range(n)]
+        sym = 'v*o^s<pd>h'
+        for ii in range(n):
+            filtr = FLD.tnum == ii+1
+            plt.plot(FLD.sds[filtr], FLD.sx[filtr], '-', c=colors[ii])
+            p, = plt.plot(FLD.sds[filtr], FLD.sx[filtr], sym[ii%10], c=colors[ii])
+            handles.append(p)
+            labels.append(SLdecoder(FLD.sw[filtr][0], Adict["SLKey"]))
+        plt.title(fig_title)
+    plt.xlabel('Distance From Shore (m)')
+    plt.ylabel('Flow Depth (m)')
+    plt.legend(handles, labels, numpoints=1, frameon=not agu_print,
+               fontsize=22 if agu_print else 10)
     if inset_map:
         fig = insetmap(fig, LAT, LON, full_globe=False, map_style=2)
     if save_fig:
@@ -3198,7 +3348,7 @@ def averagethickness_flowdepth(Adict, save_fig=False, max_on_transect=False,
     avT = np.asarray(avT)
     fig = plt.figure(figsize=(13, 9))
     ax = plt.subplot(111)
-    ax.tick_params(axis='both', which='major', labelsize=18)
+    ax.tick_params(axis='both', which='major', labelsize=24)
     ax.set_xlim([0, 20])
     ax.xaxis.set_major_locator(mpl.ticker.LinearLocator(5))    
     if agu_print:
@@ -3212,7 +3362,7 @@ def averagethickness_flowdepth(Adict, save_fig=False, max_on_transect=False,
                     labs.append(e)
                     hands.append(p)
         hands, labs = sort_legend_labels(hands, labs)
-        plt.legend(hands, labs, numpoints=1, frameon=False, loc=2)
+        plt.legend(hands, labs, numpoints=1, frameon=False, loc=2, fontsize=22)
     else:
         m, b, r = linregress(fmx, avT)[:3]
         line = m*fmx + b
@@ -3230,8 +3380,8 @@ def averagethickness_flowdepth(Adict, save_fig=False, max_on_transect=False,
         hands, labs = ax.get_legend_handles_labels()
         fig.legend(hands, labs, numpoints=1, fontsize=10, loc=7, 
                    borderaxespad=1)
-    plt.xlabel('Maximum Flow Depth (m)', fontsize=18)
-    plt.ylabel('Mean Deposit Thickness (cm)', fontsize=18)
+    plt.xlabel('Maximum Flow Depth (m)')
+    plt.ylabel('Mean Deposit Thickness (cm)')
     if save_fig:
         figsaver(fig, save_fig, fig_title)      
     print('******************************************************************')
@@ -3580,7 +3730,7 @@ def topo_classified_thickness_flowdepth(Adict, save_fig=False,
     characteristics (thickness) in the cross shore direction to average 
     across local topography and then compare that to flow depth? - GG
     """
-    print('Running plotting routine:', fig_title)
+    print('Running plotting routine:', fig_title, 'NOT YET IMPLEMENTED')
     out = denan(Adict["SLCode"], 
                 Adict["Transect"], 
                 Adict["Distance2shore"], 
@@ -3630,7 +3780,7 @@ def topo_classified_thickness_flowdepth(Adict, save_fig=False,
     if save_fig:
         figsaver(fig, save_fig, fig_title)
     print('******************************************************************')
-    return fig
+    return None
 
 ###############################################################################
 def volume_flowdepth_segments(Adict, save_fig=False,
@@ -3667,6 +3817,7 @@ def volume_flowdepth_segments(Adict, save_fig=False,
         figsaver(fig, save_fig, fig_title)
     print('******************************************************************')
     return fig
+    
 ###############################################################################
 def sand_mud_volume(Adict, dts=2750, sublocation='Sendai', 
                      elevation_datum='Tokyo Peil', save_fig=False, 
@@ -3780,7 +3931,7 @@ def distance_thickness_widget(Adict,
         handles.append(h)
         symbols.append(sh)
         line_handles.append(lh)
-        labels.append(SLdecoder(THK.sw[filtr][0]), Adict["SLKey"])
+        labels.append(SLdecoder(THK.sw[filtr][0], Adict["SLKey"]))
     plt.title(fig_title)
     plt.xlabel('Distance to shore (m)')
     plt.ylabel('Deposit Thickness (cm)')
@@ -4135,7 +4286,7 @@ class TsuDBGSFile(GSFile):
 ###############################################################################
 def main(
         xls_file_name='TsunamiSediments_AllData_BL_March2014_r6.xlsx', 
-        dict_file_name = "TsuDB_Adict_2014-10-23.pkl",
+        dict_file_name = "TsuDB_Adict_2014-12-03.pkl",
         from_xls=True,
         save_dict=False,
         saveas_dict=True,
@@ -4184,19 +4335,15 @@ if __name__ == '__main__':
             9: sedimentconcentration_histogram,
             10: sedimentconcentration_distance,
             11: flowdepth_maxsuspensiongradedlayerthickness,
-            12: volume_flowdepth,
+            12: averagethickness_flowdepth,
             13: volume_slope,
             14: distance_changeinthickness,
             }
     ##--Enter commands--##
-#    plotall(menu, kwargs="save_fig='png'", show_figs=False)
 #    plotall({k: v for k, v in menu.items() if k < 10}, 
-#            kwargs="save_fig='png'", show_figs=False)
-#    topo_classified_thickness_flowdepth(Adict)
-#    sublocation_plotter(Adict, 'Jantang')
-#    pfd = get_flowdepth_for_GS_file(Adict['high_res_gs'], Adict)
-#    csv_file_names = Adict['high_res_gs']
-#    unique = get_B_from_A(csv_file_names, Adict, 'GSFileUniform', 'unique')
-#    dts = get_B_from_A(unique, Adict, 'unique', 'Distance2shore')
-    data_globe(Adict)
+#            kwargs="save_fig='png'", show_figs=False)    
+    mpl.rcParams['font.size'] = 28
+#    sublocation_plotter(Adict, 'Kuala Merisi')
+    menu[6](Adict, agu_print=True, mm=True, lin_regress='exponential')
+#    distancetosource_maxflowdepth(Adict)
     plt.show()
