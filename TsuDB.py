@@ -1198,10 +1198,10 @@ def average_in_bins(x, y, block=10, percents=True):
 ###############################################################################
 def percentile_by_bin(bin_data, perc_data, percentile=50, bin_size=1):
     """
-    calculate the `percentile` percentile value of `median_data` in each 
+    calculate the `percentile` percentile value of `bin_data` in each 
     `bin_size` bin of `bin_data`
-    returns `bins`, `bin_data` in `bin_size` size bins and `percs` the
-    percentile values for each bin
+    returns `bins`: the centers of `bin_data` in `bin_size` size bins, and 
+    `percs`: the percentile values for each bin
     """
     bins = np.arange(min(bin_data), max(bin_data), bin_size)
     percs = np.ones_like(bins) * np.nan
@@ -1802,6 +1802,7 @@ def flowdepth_thickness_semilog(Adict, save_fig=False, japan_only=False,
         bins, percs = percentile_by_bin(FLDint, THKint, percentile=perc, 
                                         bin_size=1)
         m_, b_, r_ = linregress(bins, percs)[:3]
+        bins = np.hstack((np.asarray([FLDint.min()]), bins))
         line = m_*bins + b_
         p, = plt.plot(bins, line, color='k', lw=2)
         hands.append(p)
@@ -4344,6 +4345,5 @@ if __name__ == '__main__':
 #            kwargs="save_fig='png'", show_figs=False)    
     mpl.rcParams['font.size'] = 28
 #    sublocation_plotter(Adict, 'Kuala Merisi')
-    menu[6](Adict, agu_print=True, mm=True, lin_regress='exponential')
-#    distancetosource_maxflowdepth(Adict)
+    menu[8](Adict, agu_print=True)
     plt.show()
