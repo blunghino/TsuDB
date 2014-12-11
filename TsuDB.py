@@ -2291,7 +2291,7 @@ def meangs_flowdepth_thickness(Adict, save_fig=False, exclude=True, agu_print=Tr
                    slKey=Adict["SLKey"])
     MGS = Transect(out[6], SLC, TSC, DTS, exclude=exclude, 
                    slKey=Adict["SLKey"])
-    fig = plt.figure(figsize=(12, 12))
+    fig = plt.figure(figsize=(19, 13))
     # colorbar settings
     vmin = nanmin(MGS.sx)
     vmax = nanmax(MGS.sx)
@@ -2315,10 +2315,12 @@ def meangs_flowdepth_thickness(Adict, save_fig=False, exclude=True, agu_print=Tr
         plt.title(fig_title)
     plt.xlabel('Flow Depth (m)')
     plt.ylabel('Deposit Thickness (cm)')
-    plt.xlim(xmin=0)
+#    plt.xlim(xmin=0)
+    plt.xscale('log')
     plt.ylim(ymin=0)
     cbar = plt.colorbar(orientation='horizontal', shrink=.7, extend=extend)
     cbar.ax.invert_xaxis()
+    cbar.ax.xaxis.set_major_locator(mpl.ticker.NullLocator())
     if plot_std_instead:
         cbar.set_label(r'Standard Deviation in Grain Size ($\mathsf{\phi}$)')
     else:
@@ -4281,6 +4283,7 @@ class TsuDBGSFile(GSFile):
     """            
     project_directory = os.path.join(os.path.dirname(__file__),
                                      r'../TsuDepData/Uniform_GS_Data/')
+                                     
 
 ###############################################################################
 ##  MAIN PROGRAM
@@ -4345,5 +4348,5 @@ if __name__ == '__main__':
 #            kwargs="save_fig='png'", show_figs=False)    
     mpl.rcParams['font.size'] = 28
 #    sublocation_plotter(Adict, 'Kuala Merisi')
-    menu[8](Adict, agu_print=True)
+    menu[8](Adict)
     plt.show()
