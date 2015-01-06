@@ -1369,13 +1369,17 @@ def insetmap(fig, lat, long, full_globe=False, lbwh=[0.66, 0.70, .23, .23],
                 rl = -1
                 ha = 'right'
             elif s in ('Indian Ocean, 2004'):
-                rl = -1
-                up = 1
-                ha = 'left'
+                rl = 0
+                up = -3
+                ha = 'center'
+            elif s in ('Sumatra, 2005'):
+                rl = 0
+                up = -4
+                ha = 'center'
             else:
                 rl = 1
                 ha = 'left'
-            plt.annotate(s, (source_x[ii], source_y[ii]), xytext=(10*rl,25*up), 
+            plt.annotate(s, (source_x[ii], source_y[ii]), xytext=(15*rl,25*up), 
                          textcoords='offset points', horizontalalignment=ha,
                          arrowprops=dict(arrowstyle='-', color='w'), color='w')
     return fig
@@ -1443,7 +1447,7 @@ def localslope_thickness(Adict, save_fig=False, agu_print=True, annotate=True,
         plt.xlabel('Local Slope (m/m)')
         plt.ylabel('Change in Deposit Thickness (cm)')
         if annotate:
-            fs = 20
+            fs = 32
             n = len(m[np.isfinite(m)])
             m_p = m > 0
             m_n = m < 0
@@ -1796,6 +1800,11 @@ def flowdepth_thickness_semilog(Adict, save_fig=False, japan_only=False,
         labs.append('Takashimizu, 2012 Polynomial Regression')
         hands.append(p)
     elif lines:
+        ## Goto, 2014 relationship
+        line2 = 2.8*w + 4.4
+        p, = plt.plot(w, line2, color='Orange', lw=2)
+        labs.append('90th Percentile Linear Regression: Goto et al., 2014')
+        hands.append(p)
         ## 90th percentile curve
         perc = 90
         label = '{}th Percentile Linear Regression'.format(perc)
@@ -1806,12 +1815,9 @@ def flowdepth_thickness_semilog(Adict, save_fig=False, japan_only=False,
         line = m_*bins + b_
         p, = plt.plot(bins, line, color='k', lw=2)
         hands.append(p)
-        labs.append(label + r': $\mathdefault{R^2 =}$ ' + str(round(r_**2,2)))
-        ## Goto, 2014 relationship
-        line2 = 2.8*w + 4.4
-        p, = plt.plot(w, line2, color='Orange', lw=2)
-        labs.append('Goto et al., 2014: 90th Percentile Linear Regression')
-        hands.append(p)
+        labs.append(label + ': Data')#+ r': $\mathdefault{R^2 =}$ ' + str(round(r_**2,2)))
+        print('{label}: y = {m:.2}*x + {b:.2}'.format(label=label, m=m_, b=b_))
+        print('R^2 = ', str(round(r_**2, 2)))
     ## format axes
     ax.set_xscale('log')
     ax.set_ylim(bottom=0, top=100) 
@@ -4346,7 +4352,7 @@ if __name__ == '__main__':
     ##--Enter commands--##
 #    plotall({k: v for k, v in menu.items() if k < 10}, 
 #            kwargs="save_fig='png'", show_figs=False)    
-    mpl.rcParams['font.size'] = 28
+    mpl.rcParams['font.size'] = 24
 #    sublocation_plotter(Adict, 'Kuala Merisi')
-    menu[8](Adict)
+    f = menu[4](Adict)
     plt.show()
