@@ -47,7 +47,7 @@ from matplotlib import cm, pyplot as plt
 
 from GS_tools.gsfile import GSFile
 
-## optional imports required only for plotting subfunctions
+## optional imports required only for a couple plotting subfunctions
 try:
     from mpl_toolkits.basemap import Basemap
 except ImportError:
@@ -72,12 +72,12 @@ def notnan(x):
 ###############################################################################
 def attributefilter(x, filtr, invert=False, nanzero=False):
     """
-    filters data from array x using filter filtr
+    filters data from array x using filtr
     
     where filtr is false, the corresponding value in array x will be deleted
     x and filtr must share length
     if invert = True, inverts the function to delete where filtr is true
-    NaNzero changes NaN values in the filter to be zero 
+    nanzero changes NaN values in the filter to be zero 
     (NaN is true in boolean logic)
     """
     if nanzero:
@@ -134,6 +134,8 @@ def runfilters(x, num_filters, invert=False, verbose=False):
         return x
     else:
         for ii in range(num_filters):
+            ## eg for 2 filters with ii = 1 => ii = -2 => use second array 
+            ## from end in x
             ii = (ii+1)*-1
             for jj in range(len(x)):
                 x[jj] = attributefilter(x[jj], x[ii], invert=invert)
@@ -145,7 +147,8 @@ def runfilters(x, num_filters, invert=False, verbose=False):
 ###############################################################################    
 def datecoder(dates, dateformat=0, outputformat=1):
     """
-    accepts a list or vector of dates in excel date form
+    converts a list or vector of dates in excel date form into strings or 
+    datetime timestamps
     
     dateformat is an xlrd argument that specifies the format that the dates
     are saved in in the xls file.
@@ -197,7 +200,9 @@ def initialize_Adict():
     the database
     
     this is where to add metadata or other information that should be
-    universally accessible to the database
+    universally accessible to the database but doesn't fit into the excel file.
+    
+    a great place to create ugly but convenient solutions to problems
     """
     ## attributes to be converted from strings to floats when they are read in
     floats = ('ElevationDatum', 'ElevationBy', 'ObservationType', 'Transect',
@@ -218,7 +223,7 @@ def initialize_Adict():
                      'G': 1., 'A': 2., 'E': 3., 'R': 4., 'I': 5.}
     ## lookup dictionary to convert coded elevation datums to strings
     datum_lookup = {1: 'NAVD88', 2: 'MLLW', 3: 'MSL', 4: 'Tokyo Peil'}
-    ## lookup dictionary to convert event dates to descriptive strings
+    ## lookup dictionary to convert event datetime timestamps to event names
     event_lookup = {
                     993254400: 'Peru, 2001', 
                     1299801600: 'Japan, 2011', 
@@ -228,6 +233,7 @@ def initialize_Adict():
                     1267228800: 'Chile, 2010', 
                     1254182400: 'Samoa, 2009',
                     }
+    ## dictionary of EQ magnitudes coded by datetime timestamps
     mw_lookup = {
         993254400: 8.4,
         1299801600: 9.,
@@ -237,7 +243,8 @@ def initialize_Adict():
         1267228800: 8.8,
         1254182400: 8.1,
     }
-    ## use to map events to pyplot color symbol strings for plt.plot
+    ## use to map events to pyplot color symbol strings, allows consistent 
+    ## symbology in pyplot figures
     emap = {
             'Peru, 2001': 'kd', 
             'Japan, 2011': 'bH', 
@@ -307,117 +314,25 @@ def initialize_Adict():
     return dic
         
 ###############################################################################
-def xls2csv(file, save_as, n_sheets_to_skip=4):
-    """
-    deprecated use xls2dic    
-    
-    reads the TsuDB from excel form into a csv file
-        
-    file is the full path to the .xls or .xlsx file
-    save_as is the filename to save the .csv file to
-    """
-    warnings.warn('Use TsuDB.xls2dic', DeprecationWarning)
-    dir1 = os.getcwd()
-    os.chdir(os.path.split(file)[0])
-    book = xlrd.open_workbook(file)
-    biglist = []
-    ## the first 4 sheets are organizational, the rest contain data by location
-    for ii in range(n_sheets_to_skip, book.nsheets):
-        sheet = book.sheet_by_index(ii)        
-        if ii == n_sheets_to_skip:
-            ## header strings from the first row of the first sheet
-            biglist.append([c.value for c in sheet.row(0)])
-        ## all other rows contain data
-        for jj in range(1, sheet.nrows):
-            ## get data from each cell in row jj
-            smalllist = []
-            for c in sheet.row(jj):
-                ## repace cells that raise a UnicodeEncodeError with NaNs
-                try:
-                    test = str(c.value).encode('cp1252')
-                    smalllist.append(c.value)
-                except UnicodeEncodeError:
-                    smalllist.append('NaN')
-            biglist.append(smalllist)
-    os.chdir(dir1)
-    with open(save_as, 'w') as csvfile:
-        csvw = csv.writer(csvfile, lineterminator='\n')
-        ## biglist is a list of lists where each list is a row from the 
-        ## original excel file. for each list in biglist write a row in csvw   
-        for r in biglist:
-            csvw.writerow(r)
-                
-###############################################################################
-def csv2dic(filename=''):
-    """
-    deprecated use xls2dic
-    
-    create a dictionary from csv file of TsuDB
-    value checking afer dictionary is created
-    """
-    warnings.warn('Use TsuDB.xls2dic', DeprecationWarning)
-    dic = initialize_Adict()
-    ## get filename for .csv file
-    if not filename or not os.path.isfile(filename):
-        path, filename = os.path.split(filedialog.askopenfilename())
-        try:
-            os.chdir(path)
-        except OSError:
-            print('OSError. No valid input.')
-            sys.exit()
-    ## read in file from csv to dictionary
-    with open(filename, newline='') as csvfile:
-        rdr = csv.reader(csvfile, dialect='excel', strict=True, 
-                         skipinitialspace=True)
-        ## sequence of lists where each list is a row from the csv file
-        lines = [line for line in rdr]
-        ## first row is the headers
-    dic["attributes"] = lines[0]
-    for ii in range(len(lines[0])):
-        ## dictionary value is from each row in column ii  
-        ## dictionary key is from the headers in column ii
-        dic.update({lines[0][ii]: [line[ii] for line in lines[1:]]})
-    ## convert lists of strings of numbers stored dictionary to float arrays
-    for k in dic['floats']:
-        v = dic[k]
-        ## change strings to floats
-        for ii, string in enumerate(v):
-            try:
-                v[ii] = float(string)
-            except ValueError:
-                ##  Convert blanks to nan
-                if string == '': 
-                    v[ii] = np.nan
-                ## coded text to numeric value
-                elif string in dic['typegs_lookup'].keys():
-                    v[ii] = dic['typegs_lookup'][string]
-                else:
-                    print('ValueError raised for unexpected string.\
-                                  \nReplaced "%s" with "nan"' % string)
-                    v[ii] = np.nan
-        dic[k] = np.asarray(v)
-    ## covert string dates to datetime numbers
-    dic["Date"] = datecoder(dic["Date"])
-    dic["Tsunami"] = datecoder(dic["Tsunami"])
-    ## encode sublocations
-    dic["SLCode"], dic["SLKey"] = SLcoder(dic["Sublocation"])
-    return dic
-    
-###############################################################################
 def xls2dic(xls_file_path='', n_sheets_to_skip=4):
     """
     create dictionary of tsunami deposit database by reading in excel file
+    
+    each sheet read in must be organized by columns and have the same headers
     """
     dir_0 = os.getcwd()
+    ## if no path or invalid path ask user to manually find excel file
     if not xls_file_path or not os.path.isfile(xls_file_path):
         xls_file_path = filedialog.askopenfilename()
     path, xls_file = os.path.split(xls_file_path)
     os.chdir(path)
     ## initialize dictionary and bring in default dictionary entries
     dic = initialize_Adict()
+    ## initialize xlrd Book object
     book = xlrd.open_workbook(xls_file)
     biglist = []
-    ## the first 4 sheets are organizational, the rest contain data by location
+    ## the first `n_sheets_to_skip` sheets are organizational and are ignored,
+    ## the rest contain data by location and all have the same column headers
     for ii in range(n_sheets_to_skip, book.nsheets):
         sheet = book.sheet_by_index(ii)        
         if ii == n_sheets_to_skip:
@@ -468,22 +383,30 @@ def xls2dic(xls_file_path='', n_sheets_to_skip=4):
     ## encode sublocations
     dic["SLCode"], dic["SLKey"] = SLcoder(dic["Sublocation"])
     dic['unique'] = np.arange(dic['Modern'].size, dtype=float)
+    ## change back to original working directory
     os.chdir(dir_0)
     return dic
     
 ###############################################################################   
 def savedict(Adict, dict_name='TsuDB_Adict_', askfilename=False):
     """
-    pickle a dictionary with name and timestamp. saveas with askfilename=True.
+    pickle a dictionary with name and timestamp. 
+    save as with askfilename=True.
+    
+    returns the name of the created pickle file
     """
+    ## save as
     if askfilename:
         filename = filedialog.asksaveasfilename()
+    ## create automatic unique file name
     else:
+        ## right meow!
         meow = dt.datetime.strftime(dt.datetime.today(), '%Y-%m-%d')
         filename = dict_name + meow + '.pkl'
         while os.path.isfile(filename):
             meow = dt.datetime.strftime(dt.datetime.today(), '%Y-%m-%d_%H%M%S')
             filename = dict_name + meow + '.pkl'
+    ## write to pickle file
     with open(filename, 'wb') as output:
         pickle.dump(Adict, output)
         output.close()    
@@ -492,8 +415,9 @@ def savedict(Adict, dict_name='TsuDB_Adict_', askfilename=False):
 ###############################################################################
 def opendict(filename):
     """
-    unpickle
+    unpickle a pickle file containing a dictionary (or anything really)
     """
+    ## find file to open
     if not filename or not os.path.isfile(filename):
         path, filename = os.path.split(filedialog.askopenfilename())
         try:
@@ -501,6 +425,7 @@ def opendict(filename):
         except OSError:
             print('OSError. No valid input.')
             sys.exit()
+    ## read data
     with open(filename, 'rb') as picklein:
         dic = pickle.load(picklein)
         picklein.close()    
@@ -541,6 +466,9 @@ class Transect:
     """
     def __init__(self, X, SLC, TSC, DTS=None, return_flow=False, exclude=None, 
                  slKey=None):
+        """
+        initialize transect object
+        """
         self.x = np.asarray(X, dtype=np.float64)
         self.w = SLC
         self.t = TSC
@@ -642,6 +570,10 @@ class Transect:
     def _Tsort_return_flow(self):
         """
         gets np.argsort indices based off sort of w, t then ds
+        
+        differs from _Tsort because it calculates intermediate values based on
+        offshore flow direction... eg: dx would be change from landward point 
+        to seaward point
         
         see _Tsort for more detailed comments on the code
         """
@@ -911,8 +843,10 @@ def SLdecoder(codein, key):
 ###############################################################################        
 def getevents(slocs, Adict, return_mw=False):
     """   
-    using Adict['event_lookup'] gets an event associated with sublocation codes
-    returns a list of strings if passed a list or a numpy array...
+    using Adict['event_lookup'] gets the tsunami event associated with 
+    each sublocation code in slocs
+    returns a list of strings if passed a list else a numpy array...
+
     
     slocs must be a list or np.ndarray
     
@@ -932,7 +866,6 @@ def getevents(slocs, Adict, return_mw=False):
             event.append(Adict[lookup_key][t])
         except KeyError:
             event.append('' if not return_mw else np.nan)
-
     return event
     
 ###############################################################################
@@ -943,7 +876,7 @@ def get_B_from_A(A, Adict, keyA='ID', keyB='GSFileUniform'):
     
     default keyA and keyB will retreive gsfileuniform from associated ids
     
-    NOT necessary when using numpy arrays!
+    NOT necessary when using numpy arrays!!!! only for list Adict values
     """
     out = list(range(len(A)))
     to_search = list(Adict[keyA])
@@ -977,25 +910,34 @@ def get_datestrings(timestamps):
 def get_values_on_transect_with_tuple(transect_tuple, Adict, *keys):
     """
     accepts a transect tuple (sloc, tsc) like ('Sendai', 1)
-    returns a list of the values associated with that transect at Adict[key]
+    returns a list of the values associated with that transect at Adict[key] 
+    for each key in keys    
     
     sloc can be string or slcode
     """
     sloc, tsc = transect_tuple
+    ## if sloc is a string, look up the SLCode value for it
     if isinstance(sloc, str):
         sloc = lookup_SLCode(sloc, Adict['SLKey'])
+    ## filters for SLCode and Transect number
     f1 = Adict['SLCode'] == sloc
     f2 = Adict['Transect'] == tsc
     f = f1 * f2
     if not f.any():
         return None
+    ## create a list of outs that is the same length as keys
     outs = list(keys)
     for ii, key in enumerate(keys):
+        ## get target array or list from Adict
         get_from = Adict[key]
         if isinstance(get_from, np.ndarray):
+            ## assign to outs[ii] the values of get_from associated with the 
+            ## desired transect by filtering numpy array
             outs[ii] = get_from[f]
         else:
+            ## for lists, filter with f manually
             outs[ii] = [x for ii, x in enumerate(get_from) if f[ii]]
+    ## if only one object in outs list, return it independently - not in a list
     if len(outs) == 1:
         return outs[0]
     return outs
@@ -1179,19 +1121,26 @@ def average_in_bins(x, y, block=10, percents=True):
     min_x = nanmin(x)
     max_x = nanmax(x)
     if not percents:
+        ## created block spaced values from min_x to max_x
         xp = np.arange(np.floor(min_x), np.ceil(max_x), block)
     else:
+        ## create block percent spaced values from 0 to 100 percent of max_x
         xp = np.asarray([max_x * p / 100 for p in np.arange(0., 100., block)])
+        ## change block to be an increment of x, not a percent
         block = xp[1] - xp[0]
     yp = np.zeros_like(xp)
     for ii, p in enumerate(xp):
+        ## set up filters
         if ii == 0:
+            ## include lower bound in first bin
             f1 = x >= p
         else:
             f1 = x > p
         f2 = x <= p + block
         filtr = f1 * f2
+        ## get mean in filtered part of y
         yp[ii] = nanmean(y[filtr])
+    ## midpoint of bins
     xp = xp + (block/2)
     return xp, yp
 
@@ -1247,10 +1196,13 @@ def sort_legend_labels(hands, labs, func=last4):
     """        
     hands = np.asarray(hands)
     labs = np.asarray(labs)
+    ## sort based on the results of a function of labs
     if func:
         sorton = func(labs)
+    ## sort based on labs
     else:
         sorton = labs
+    ## get argsort of sorton
     ind = np.argsort(sorton)
     return list(hands[ind]), list(labs[ind])
 
@@ -1268,18 +1220,23 @@ def distance_to_source(Adict, lats, lons, events, sources=None,
     names = []
     source_lat = np.zeros(len(sources))
     source_lon = source_lat.copy()
+    ## iterate on sources dictionary and unpack individual variables from 
+    ## dictionary value tuples
     for ii, (k, (s_lat, s_lon, _)) in enumerate(sources.items()):
         names.append(k)
         source_lat[ii] = s_lat
         source_lon[ii] = s_lon
     names = np.asarray(names)
     distances = np.zeros_like(lats)
+    ## calculate distances to all lats associated with each event
     for ii, e in enumerate(events):
+        ## set up lat lon variables to pass as arguments to distance calc
         lat1 = lats[ii]
         lon1 = lons[ii]
         f = names == e
         lat2 = source_lat[f]
         lon2 = source_lon[f]
+        ## call distance calc function and multiply by radius of earth
         distances[ii] = Re * distance_on_unit_sphere(lat1, lon1, lat2, lon2)
     return distances
     
@@ -1319,7 +1276,9 @@ def insetmap(fig, lat, long, full_globe=False, lbwh=[0.66, 0.70, .23, .23],
         check = Basemap
     except NameError:
         return fig
+    ## add axis to figure to hold inset mad
     inset = fig.add_axes(lbwh, zorder=zorder, frame_on=frame_on)
+    ## calculate map corners to frame data nicely
     if not full_globe:
         mnlt, mnlg, mxlt, mxlg = min(lat), min(long), max(lat), max(long)
         pad = min(10, 90-mxlt, 90+mnlt)
@@ -1333,12 +1292,17 @@ def insetmap(fig, lat, long, full_globe=False, lbwh=[0.66, 0.70, .23, .23],
         else:
             lllong = min(mnlg-pad, mnlg+pad)
             urlong = max(mxlg-pad, mxlg+pad)
+        ## initialize basemap
         m = Basemap(resolution=resolution, area_thresh=10, llcrnrlat=lllat, 
                     llcrnrlon=lllong, urcrnrlat=urlat, urcrnrlon=urlong)
+    ## full globe map
     else:
+        ## initialize basemap
         m = Basemap(resolution=resolution, area_thresh=10, lat_0=0, lon_0=160)
         long[long < 0] += 360
+    ## convert lat and long to map coordinates
     y, x = m(lat, long)
+    ## set map style
     if map_style == 1:
         m.drawcoastlines(zorder=zorder+1)
         m.fillcontinents('gray', zorder=zorder)
@@ -1350,18 +1314,22 @@ def insetmap(fig, lat, long, full_globe=False, lbwh=[0.66, 0.70, .23, .23],
         m.drawparallels(np.arange(-80, 90, parallels_meridians), 
                         zorder=zorder+1, labels=[1,0,0,0])
     inset.frame_on = frame_on
+    ## plot data on map
     m.plot(x, y, marker='o', mec='k', mfc=mfc, zorder=zorder+2, markersize=6, 
            linestyle='None')
+    ## annotate map with sources
     if sources:
         names = []
         source_lat = np.zeros(len(sources))
         source_lon = source_lat.copy()
+        ## find locations of sources
         for ii, (k, (s_lat, s_lon, _)) in enumerate(sources.items()):
             names.append(k)
             source_lat[ii] = s_lat
             source_lon [ii] = s_lon
         source_lon[source_lon < 0] += 360
         source_y, source_x = m(source_lat, source_lon)
+        ## customize positions for labeling so it looks good
         for ii, s in enumerate(names):
             arrow = None
             up = 0
@@ -1390,7 +1358,7 @@ def insetmap(fig, lat, long, full_globe=False, lbwh=[0.66, 0.70, .23, .23],
 def data_globe(Adict, save_fig=False, attribute="Modern", label_tsunamis=True,
                fig_title='Global distribution of tsunami deposit data'):
     """
-    plot data from any Adict key 'attribute' on world map
+    plot location data for any Adict key 'attribute' on world map
     """
     print('Running plotting routine:', fig_title)
     out = denan(Adict["Lat"], 
@@ -1398,11 +1366,13 @@ def data_globe(Adict, save_fig=False, attribute="Modern", label_tsunamis=True,
                 Adict[attribute]
                 )
     out = runfilters(out, 1)
+    ## label tsunami sources on the map
     if label_tsunamis:
         sources = Adict['sources']
     else:
         sources = None
     fig = plt.figure(figsize=(16,10))
+    ## call insetmap to add axes to the figure and plot the data
     fig = insetmap(fig, out[0], out[1], full_globe=False, lbwh=[.05,.05,.9,.9], 
                    map_style=2, parallels_meridians=40, 
                    sources=sources)
@@ -1496,6 +1466,191 @@ def localslope_thickness(Adict, save_fig=False, agu_print=True, annotate=True,
         plt.xlabel('Local slope')
         plt.ylabel('Deposit Thickness (cm)')
         plt.title('Local Slope vs Thickness of Deposit')
+        plt.tight_layout()    
+    if save_fig:
+        figsaver(fig, save_fig, fig_title)
+    print('******************************************************************')
+    return fig
+    
+###############################################################################
+def elevation_thickness(Adict, save_fig=False, agu_print=False, annotate=True,
+                         lin_regress=False, exclude=True,
+                         fig_title=' Elevation vs Thickness'):
+    """
+    plot data from Adict- elevation vs thickness
+    dependent on global variable Adict containing TDB data keyed by attribute
+    """
+    print('Running plotting routine:', fig_title)
+    if exclude is True:
+        exclude = Adict['incomplete_transect']
+    out = denan(Adict["SLCode"], 
+                Adict["Transect"], 
+                Adict["Distance2shore"], 
+                Adict["Thickness"], 
+                Adict["MaxThickness"], 
+                Adict["Elevation"], 
+                Adict["Modern"],
+                n_rounds=3
+                )
+    out = runfilters(out, 1)
+    SLC = out[0]
+    TSC = out[1]
+    DTS = out[2]
+    THK = Transect((out[3]+out[4])/2., SLC, TSC, DTS, exclude=exclude, 
+                   slKey=Adict["SLKey"])
+    ELV = Transect(out[5], SLC, TSC, DTS, exclude=exclude, 
+                   slKey=Adict["SLKey"])
+    filtr = np.isfinite(THK.dx)
+    d_thk = THK.dx[filtr]
+    d_elv = ELV.dx[filtr]
+    if agu_print:
+        fig = plt.figure(figsize=(14,12))
+        ax = plt.subplot(111)
+        plt.scatter(d_elv, d_thk)
+        plt.axhline(0, color='black')
+        plt.axvline(0, color='black')
+        plt.xlabel('Change in Elevation (m)')
+        plt.ylabel('Change in Deposit Thickness (cm)')
+        if annotate:
+            fs = 32
+            n = len(d_elv[np.isfinite(d_elv)])
+            de_p = d_elv > 0
+            de_n = d_elv < 0
+            dt_p = d_thk > 0
+            dt_n = d_thk < 0 
+            I = len(d_elv[de_p * dt_p]) * 100 / n
+            IV = len(d_elv[de_p * dt_n]) * 100 / n
+            III = len(d_elv[de_n * dt_n]) * 100 / n
+            II = len(d_elv[de_n * dt_p]) * 100 / n
+            plt.text(.95, .95, 'I: {:.0f} %'.format(I), fontsize=fs,
+                     ha='right', va='bottom', transform=ax.transAxes)
+            plt.text(.95, .05, 'IV: {:.0f} %'.format(IV), fontsize=fs,
+                     ha='right', va='top', transform=ax.transAxes)
+            plt.text(.05, .05, 'III: {:.0f} %'.format(III), fontsize=fs,
+                     ha='left', va='top', transform=ax.transAxes)
+            plt.text(.05, .95, 'II: {:.0f} %'.format(II), fontsize=fs,
+                     ha='left', va='bottom', transform=ax.transAxes)                     
+    else:
+        fig = plt.figure(figsize=(20, 6))
+        plt.subplot(133)
+        plt.scatter(ELV.sx, THK.sx)
+        plt.axis(ymin=0)
+        plt.axvline(0, color='black')
+        plt.xlabel('Elevation (m)')
+        plt.ylabel('Deposit Thickness (cm)')
+        plt.title('Elevation vs Thickness of Deposit')
+        plt.subplot(132)
+        plt.axhline(0, color='black')
+        plt.axvline(0, color='black')
+        plt.scatter(d_elv, d_thk)
+        plt.xlabel('Change in Elevation (m)')
+        plt.ylabel('Change in Thickness (cm)')
+        plt.title('Change in Elevation vs Change in Thickness of Deposit')
+        plt.subplot(131)
+        plt.axvline(0, color='black')
+        plt.scatter(d_elv, THK.sx[filtr])
+        plt.axis(ymin=0)
+        plt.xlabel('Change in Elevation (m)')
+        plt.ylabel('Deposit Thickness (cm)')
+        plt.title('Change in Elevation vs Thickness of Deposit')
+        plt.tight_layout()    
+    if save_fig:
+        figsaver(fig, save_fig, fig_title)
+    print('******************************************************************')
+    return fig
+    
+###############################################################################
+def elevation_meangs(Adict, save_fig=False, agu_print=False, annotate=True,
+                         lin_regress=False, plot_std_instead=False, 
+                         exclude=True, sand_only=False,
+                         fig_title=' Elevation vs Mean Grain Size'):
+    """
+    plot data from Adict- elevation vs mean grain size
+    dependent on global variable Adict containing TDB data keyed by attribute
+    """
+    if plot_std_instead and fig_title:
+        fig_title = 'Standard Deviation in Grain Size vs Thickness'
+    print('Running plotting routine:', fig_title)
+    if exclude is True:
+        exclude = Adict['incomplete_transect']
+    if sand_only:
+        # specify min and max grain size to use in gs mean calculation
+        gs_min_max = (4, -1)
+    else:
+        gs_min_max = None
+    gsmeans = get_gsmeans(Adict, gs_min_max=gs_min_max, 
+                          return_std_instead=plot_std_instead)
+    out = denan(Adict["SLCode"], 
+                Adict["Transect"], 
+                Adict["Distance2shore"], 
+                gsmeans,
+                Adict["Elevation"], 
+                Adict["Modern"],
+                n_rounds=3
+                )
+    out = runfilters(out, 1)
+    SLC = out[0]
+    TSC = out[1]
+    DTS = out[2]
+    MGS = Transect(out[3], SLC, TSC, DTS, exclude=exclude, slKey=Adict["SLKey"])
+    ELV = Transect(out[4], SLC, TSC, DTS, exclude=exclude, slKey=Adict["SLKey"])
+    filtr = np.isfinite(MGS.dx)
+    d_mgs = MGS.dx[filtr]
+    d_elv = ELV.dx[filtr]
+    if agu_print:
+        fig = plt.figure(figsize=(14,12))
+        ax = plt.subplot(111)
+        plt.scatter(d_elv, d_mgs)
+        ax.invert_yaxis()
+        plt.axhline(0, color='black')
+        plt.axvline(0, color='black')
+        plt.xlabel('Change in Elevation (m)')
+        plt.ylabel('Change in Mean Grain Size (phi)')
+        if annotate:
+            fs = 32
+            n = len(d_elv[np.isfinite(d_elv)])
+            de_p = d_elv > 0
+            de_n = d_elv < 0
+            dg_p = d_mgs > 0
+            dg_n = d_mgs < 0 
+            I = len(d_elv[de_p * dg_p]) * 100 / n
+            IV = len(d_elv[de_p * dg_n]) * 100 / n
+            III = len(d_elv[de_n * dg_n]) * 100 / n
+            II = len(d_elv[de_n * dg_p]) * 100 / n
+            plt.text(.95, .95, 'I: {:.0f} %'.format(I), fontsize=fs,
+                     ha='right', va='bottom', transform=ax.transAxes)
+            plt.text(.95, .05, 'IV: {:.0f} %'.format(IV), fontsize=fs,
+                     ha='right', va='top', transform=ax.transAxes)
+            plt.text(.05, .05, 'III: {:.0f} %'.format(III), fontsize=fs,
+                     ha='left', va='top', transform=ax.transAxes)
+            plt.text(.05, .95, 'II: {:.0f} %'.format(II), fontsize=fs,
+                     ha='left', va='bottom', transform=ax.transAxes)                     
+    else:
+        fig = plt.figure(figsize=(20, 6))
+        ax = plt.subplot(133)
+        plt.scatter(ELV.sx, MGS.sx)
+        ax.invert_yaxis()
+        plt.axis(ymin=0)
+        plt.axvline(0, color='black')
+        plt.xlabel('Elevation (m)')
+        plt.ylabel('Mean Grain Size (phi)')
+        plt.title('Elevation vs Mean Grain Size of Deposit')
+        ax = plt.subplot(132)
+        plt.axhline(0, color='black')
+        plt.axvline(0, color='black')
+        plt.scatter(d_elv, d_mgs)
+        ax.invert_yaxis()
+        plt.xlabel('Change in Elevation (m)')
+        plt.ylabel('Change in Mean Grain Size (phi)')
+        plt.title('Change in Elevation vs Change in Mean Grain Size of Deposit')
+        ax = plt.subplot(131)
+        plt.axvline(0, color='black')
+        plt.scatter(d_elv, MGS.sx[filtr])
+        ax.invert_yaxis()
+        plt.axis(ymin=0)
+        plt.xlabel('Change in Elevation (m)')
+        plt.ylabel('Mean Grain Size (phi)')
+        plt.title('Change in Elevation vs Mean Grain Size of Deposit')
         plt.tight_layout()    
     if save_fig:
         figsaver(fig, save_fig, fig_title)
@@ -2855,6 +3010,51 @@ def distance_changeinthickness_panels(Adict, save_fig=False,
         figsaver(fig, save_fig, fig_title)
     print('******************************************************************')
     return fig
+
+###############################################################################    
+def distance_elevation_panels(Adict, save_fig=False,
+                                agu_print=None, exclude=None, fig_title=\
+                                'Thickness vs Distance to Shore (Panels)'):
+    """
+    plot data from Adict- distance to shore vs thickness
+    dependent on global variable Adict containing TDB data keyed by attribute
+    """
+    print('Running plotting routine:', fig_title)
+    out = denan(Adict["SLCode"],
+                Adict["Transect"],
+                Adict["Distance2shore"],
+                Adict["Elevation"],
+                Adict["Modern"]
+                )
+    out = runfilters(out, 1)
+    ELV = Transect(out[3], out[0], out[1], out[2], exclude=exclude, 
+                    slKey=Adict["SLKey"])
+    tnums = list(set(ELV.tnum))
+    n = int(np.ceil(np.sqrt(len(tnums))))
+    fig = plt.figure(figsize=(50, 30), dpi=72)      
+    for ii, tnum in enumerate(sorted(tnums)):
+        filtr = ELV.tnum == tnum
+        x = ELV.sds[filtr]
+        y = ELV.sx[filtr]
+        sloc = SLdecoder(nanmax(ELV.sw[filtr]), Adict["SLKey"])
+        ax = plt.subplot(n, n, ii+1)
+        plt.plot(x, y, 'b--')
+        plt.plot(x, y, 'k.')
+        plt.axis(xmin=0, ymin=0)
+        ax.xaxis.set_major_locator(mpl.ticker.LinearLocator(5))
+        ax.yaxis.set_major_locator(mpl.ticker.LinearLocator(3))
+        xformatter = mpl.ticker.FuncFormatter(axint)
+        yformatter = mpl.ticker.FuncFormatter(axround)
+        ax.xaxis.set_major_formatter(xformatter)
+        ax.yaxis.set_major_formatter(yformatter)
+        plt.title(sloc)
+        plt.xlabel('Distance to Shore (m)', fontsize=9)
+        plt.ylabel('Elevation (m)', fontsize=9)
+    plt.tight_layout()
+    if save_fig:
+        figsaver(fig, save_fig, fig_title)
+    print('******************************************************************')
+    return fig
     
 ###############################################################################
 def percenttransect_thickness(Adict, save_fig=False, normalize_thickness=False, 
@@ -3502,6 +3702,72 @@ def localslope_thickness_proximities(Adict, save_fig=False, fig_title=\
         figsaver(fig, save_fig, fig_title)
     print('******************************************************************')
     return fig
+    
+###############################################################################
+def elevation_thickness_proximities(Adict, save_fig=False, annotate=True,
+                                    fig_title=\
+                   'Elevation vs Thickness at varying proximity thresholds'):
+    """
+    plot data from Adict- Elevation vs thickness
+    test different proximity
+    dependent on global variable Adict containing TDB data keyed by attribute
+    """
+    print('Running plotting routine:', fig_title)
+    out = denan(Adict["SLCode"], 
+                Adict["Transect"], 
+                Adict["Distance2shore"], 
+                Adict["Thickness"], 
+                Adict["MaxThickness"], 
+                Adict["Elevation"], 
+                Adict["Modern"],
+                n_rounds=3
+                )
+    out = runfilters(out, 1)
+    SLC = out[0]
+    TSC = out[1]
+    DTS = out[2]
+    THK = Transect((out[3]+out[4])/2., SLC, TSC, DTS)
+    ELV = Transect(out[5], SLC, TSC, DTS)
+    fig = plt.figure(figsize=(22, 6))
+    for ii, r in enumerate((np.Inf, 25, 10, 5)):
+        filtr = np.isfinite(THK.dx)
+        d_thk = THK.dx[filtr]
+        d_elv = ELV.dx[filtr]
+        d_ds = ELV.dds[filtr]
+        d_elv[d_ds > r] = np.nan
+        d_thk[d_ds > r] = np.nan
+        ii += 1
+        ax = plt.subplot(1, 4, ii)
+        plt.axhline(0, color='black')
+        plt.axvline(0, color='black')
+        plt.scatter(d_elv, d_thk)
+        plt.xlabel('Change in Elevation (m)')
+        plt.ylabel('Change in thickness (cm)')
+        plt.title(str(r)+' meter proximity')
+        if annotate:
+            fs = 14
+            n = len(d_elv[np.isfinite(d_elv)])
+            de_p = d_elv > 0
+            de_n = d_elv < 0
+            dt_p = d_thk > 0
+            dt_n = d_thk < 0 
+            I = len(d_elv[de_p * dt_p]) * 100 / n
+            IV = len(d_elv[de_p * dt_n]) * 100 / n
+            III = len(d_elv[de_n * dt_n]) * 100 / n
+            II = len(d_elv[de_n * dt_p]) * 100 / n
+            plt.text(.95, .95, 'I: {:.0f} %'.format(I), fontsize=fs,
+                     ha='right', va='bottom', transform=ax.transAxes)
+            plt.text(.95, .05, 'IV: {:.0f} %'.format(IV), fontsize=fs,
+                     ha='right', va='top', transform=ax.transAxes)
+            plt.text(.05, .05, 'III: {:.0f} %'.format(III), fontsize=fs,
+                     ha='left', va='top', transform=ax.transAxes)
+            plt.text(.05, .95, 'II: {:.0f} %'.format(II), fontsize=fs,
+                     ha='left', va='bottom', transform=ax.transAxes)
+    plt.tight_layout()    
+    if save_fig:
+        figsaver(fig, save_fig, fig_title)
+    print('******************************************************************')
+    return fig
 
 ###############################################################################
 def thickness_nextthickness(Adict, save_fig=False, 
@@ -4073,7 +4339,8 @@ def sublocation_plotter(Adict, *args, exclude=None):
     def make_plot(tnums, verbose=True):
         """
         makes figures with four subplots of deposit thickness, flow depth, 
-        elevation, and change in thickness vs distance to shore by transect
+        elevation, and mean grain size plotted against distance
+        one figure for each transect
         tnums is a generator of transect numbers
         """
         for tnum in tnums:
@@ -4082,14 +4349,15 @@ def sublocation_plotter(Adict, *args, exclude=None):
                 ## returning an SLCode at a sublocation where not enough data
                 ## exists to create a transect. it does this as a courtesy to
                 ## allow sublocation_plotter to report 'No data to plot'
-                fig_title = SLdecoder(-tnum, Adict['SLKey'])
-                print('** %s. No data to plot. No transect data.' % fig_title)
+                slname = SLdecoder(-tnum, Adict['SLKey'])
+                print('** %s. No data to plot. No transect data.' % slname)
                 continue
             filtr = THK.tnum == tnum
             ## get the sublocation code
             sloc = THK.sw[filtr][0]
             tsc = THK.st[filtr][0]
-            fig_title = SLdecoder(sloc, Adict["SLKey"])                        
+            slname = SLdecoder(sloc, Adict["SLKey"])
+            fig_title = '{}, {}'.format(slname, tsc)                     
             gsfilenames, gsdts = get_values_on_transect_with_tuple(
                                                             (sloc, tsc),
                                                             Adict,
@@ -4129,6 +4397,7 @@ def sublocation_plotter(Adict, *args, exclude=None):
                 datum = 'unknown datum'
             else:
                 datum = Adict['datum_lookup'][datum]
+            ## plot
             fig, ax = plt.subplots(4, 1, sharex=True, figsize=(12, 12))
             plt.sca(ax[0])
             x, y = denan(THK.sds[filtr], THK.sx[filtr])
@@ -4188,10 +4457,12 @@ def sublocation_plotter(Adict, *args, exclude=None):
         for arg in args:
             ## find out what each element of the tuple is and make figs
             if isinstance(arg, str):
+                ## lookup the tnum using the string name of the transect
                 tnums = lookup_tnum(lookup_SLCode(arg, Adict['SLKey']), THK)
                 make_plot(tnums)
             elif isinstance(arg, int):
-                tnums = lookup_tnum(arg, THK)
+                ## arg is the tnum
+                tnums = [arg]
                 make_plot(tnums)
     print('******************************************************************')
     print('Displaying figures...')
@@ -4201,6 +4472,9 @@ def sublocation_plotter(Adict, *args, exclude=None):
 def meangs_distance_transect(Adict, transect_tuple, save_fig=False, 
                                scale=500, cmap='spectral', annotate=False):
     """
+    plot all mean grain sizes from a given transect spatially
+    y axis is depth, x axis is distance, size and color show grain size
+    
     transect tuple is (sloc, tsc) like ('Sendai', 1)
     """
     file_names, dts = get_values_on_transect_with_tuple(transect_tuple,
@@ -4270,6 +4544,11 @@ def plotall(menu, dic='Adict', kwargs='', show_figs=True, reverse=True):
     
     string 'kwargs' is used to pass kwargs to each plotting routine 
     eg (to specify a value for save_fig for all plots) kwargs="save_fig='png'"
+    
+    if reverse is True, flip the order in which the plots are created
+    
+    eg:    plotall({k: v for k, v in menu.items() if k < 10}, 
+                   kwargs="save_fig='png'", show_figs=False)  
     """
     for key in sorted(menu.keys(), reverse=reverse):
         try:
@@ -4307,6 +4586,7 @@ def main(
     """
     ## Settings
     if not TDB_DIR:
+        ## if working directory is not specified, use directory of this file
         TDB_DIR = os.path.join(os.path.dirname(__file__), '..')
     xls_file_path = os.path.join(TDB_DIR, xls_file_name)
 
@@ -4314,12 +4594,15 @@ def main(
     plt.close('all')
     
     ## Main program to load database
+    ## read data from master excel file
     if from_xls:
         Adict = xls2dic(xls_file_path)
         print('TsuDB data read in from xls file "%s"\n' % xls_file_name)
+    ## save excel data into a python pickle file
     if save_dict and from_xls:
         dict_file_name = savedict(Adict, askfilename=saveas_dict)
         print('TsuDB data dictionary saved as "%s"\n' % dict_file_name)
+    ## open data from a python pickle file (faster!)
     if not from_xls:
         Adict = opendict(dict_file_name)
         print('TsuDB data dictionary opened from "%s"\n' % dict_file_name) 
@@ -4330,6 +4613,7 @@ def main(
 
 ############################################################################### 
 if __name__ == '__main__':
+    ## load Adict using main function
     Adict = main(from_xls=False, save_dict=True)
         
     ##--Plotting routines menu--##
@@ -4352,7 +4636,8 @@ if __name__ == '__main__':
     ##--Enter commands--##
 #    plotall({k: v for k, v in menu.items() if k < 10}, 
 #            kwargs="save_fig='png'", show_figs=False)    
-    mpl.rcParams['font.size'] = 24
-#    sublocation_plotter(Adict, 'Kuala Merisi')
-    f = menu[4](Adict)
+#    mpl.rcParams['font.size'] = 20
+#    sublocation_plotter(Adict, 26)
+#    f = menu[4](Adict)
+    fig = meangs_distance_transect(Adict, ('Kuala Merisi', 1))
     plt.show()
