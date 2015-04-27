@@ -22,7 +22,7 @@ to test all functionality:
 use requirements.txt to install all third party requirements with pip:
     pip install -r requirements.txt
     
-also requires GS_tools module to be added to PYTHONPATH
+also requires GS_tools module to be added to PYTHONPATH environment variable
 GS_tools module available at https://github.com/blunghino/GS_tools
 
 @author: Brent Lunghino, USGS, CNTS
