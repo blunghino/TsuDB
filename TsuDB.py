@@ -468,6 +468,17 @@ class Transect:
                  slKey=None):
         """
         initialize transect object
+        
+        `return_flow` is True if you want to sort transects from landward to 
+        seaward
+        
+        `slKey` is only needed if `exclude` is not None and must be a
+        dictionary relating sublocation numbers to sublocation strings 
+        (normally created by TsuDB.SLcoder function)
+        
+        `exclude` is used to exclude specific transects. it is a list of tuples
+        with each tuple in the form (sublocation, transect) 
+        eg ('Kuala Merisi', 1). transects in this list will be excluded.
         """
         self.x = np.asarray(X, dtype=np.float64)
         self.w = SLC
@@ -765,12 +776,16 @@ def percent_normal_graded(uniformgsfile, tolerance=.1, min_size=None,
 ###############################################################################
 def interp_flowdepth_to_thickness(THK, FLD, keep_nans=False):
     """
-    interpolates between flow depth observations 
-    such that every thickness observation has a matching flow depth
-    THK and FLD must be objects of the Transect class
+    POORLY NAMED - works for any Transect data of interest
     
-    if keep nans, the output arrays will be the same size as the original 
-    thickness array
+    interpolates between `FLD` observations 
+    such that every `THK` observation has a matching `FLD`
+    
+    `THK` and `FLD` must be objects of the Transect class that were created 
+    from the same lists of sublocations, transect numbers, & distances to shore
+    
+    if `keep_nans` is True, the output arrays will be the same size as the  
+    original thickness array
     """
     THKint = []
     FLDint = []
